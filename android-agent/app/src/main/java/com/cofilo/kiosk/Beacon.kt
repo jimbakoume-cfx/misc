@@ -11,9 +11,10 @@ import kotlin.concurrent.thread
 object Beacon {
     private const val DEFAULT_SERVER = "https://confiance-kiosk.netlify.app"
 
-    fun send(ctx: Context, step: String, detail: String = "") {
+    /** Sends in the background. [waitMs] > 0 blocks that long first, so a setup step reports before it hands control back. */
+    fun send(ctx: Context, step: String, detail: String = "", waitMs: Long = 0) {
         val app = ctx.applicationContext
-        thread(name = "kiosk-beacon", isDaemon = true) {
+        val worker = thread(name = "kiosk-beacon", isDaemon = true) {
             runCatching {
                 val base = Prefs(app).serverUrl.ifEmpty { DEFAULT_SERVER }.trimEnd('/')
                 if (!base.startsWith("https://")) return@runCatching
@@ -31,5 +32,6 @@ object Beacon {
                 } finally { conn.disconnect() }
             }
         }
+        if (waitMs > 0) runCatching { worker.join(waitMs) }
     }
 }

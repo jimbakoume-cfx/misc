@@ -2,13 +2,13 @@ package com.cofilo.kiosk
 
 import android.app.Activity
 import android.app.ActivityManager
-import android.app.AlertDialog
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Color
-import android.graphics.Typeface
+import android.content.res.ColorStateList
+import android.graphics.drawable.GradientDrawable
 import android.media.AudioManager
 import android.os.Bundle
 import android.os.SystemClock
@@ -18,8 +18,8 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
-import android.widget.Button
 import android.widget.EditText
+import android.app.Dialog
 import android.widget.GridLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -45,9 +45,6 @@ class MainActivity : Activity() {
     private var lastAutoLaunch = 0L
     private val recentLaunches = ArrayDeque<Long>()
 
-    private val navy = Color.parseColor("#081A51")
-    private val slate = Color.parseColor("#475569")
-
     private val stateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) = runOnUiThread {
             render()
@@ -60,9 +57,11 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#F4F6FA"))
+            setBackgroundColor(Ui.bg)
         }
         setContentView(root)
+        window.statusBarColor = Ui.navy
+        window.navigationBarColor = Ui.bg
         val p = Prefs(this)
         if (p.enrolled || p.hasEnrollConfig) AgentService.start(this)
     }
@@ -123,7 +122,8 @@ class MainActivity : Activity() {
 
     // ---------- UI ----------
 
-    private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
+    private fun dp(v: Int) = Ui.dp(this, v)
+    private fun tr(en: String, fr: String) = Ui.tr(en, fr)
 
     private fun version(): String = runCatching {
         val i = packageManager.getPackageInfo(packageName, 0)
@@ -133,43 +133,61 @@ class MainActivity : Activity() {
     private fun render() {
         root.removeAllViews()
         val p = Prefs(this)
-        if (p.enrolled && !Policy.isOwner(this)) root.addView(unmanagedBanner())
         root.addView(header(p))
+        if (p.enrolled && !Policy.isOwner(this)) root.addView(unmanagedBanner())
         val body: View = when {
             !p.enrolled -> enrollView(p)
-            p.allowedApps.isEmpty() -> centerText("No apps assigned to this device yet.\nPlease contact your administrator.")
+            p.allowedApps.isEmpty() -> emptyState(
+                tr("No apps yet", "Aucune application"),
+                tr("Your administrator has not assigned any apps to this phone.", "Votre administrateur n'a pas encore attribué d'applications à ce téléphone.")
+            )
             else -> appGrid(p)
         }
         root.addView(body)
         root.addView(footer())
     }
 
-    /** Red banner when the app was installed by hand: nothing can be locked or controlled in that state. */
-    private fun unmanagedBanner(): View = TextView(this).apply {
-        text = "This phone is NOT managed. The app was installed by hand, so it cannot be locked down or controlled from the dashboard. " +
-            "Ask your administrator to reset the phone and set it up with the QR code."
-        setTextColor(Color.WHITE)
-        setBackgroundColor(Color.parseColor("#B91C1C"))
-        textSize = 13f
-        setPadding(dp(16), dp(10), dp(16), dp(10))
+    /** Red card when the app was installed by hand: nothing can be locked or controlled in that state. */
+    private fun unmanagedBanner(): View = Ui.cardBox(this, 14).apply {
+        background = Ui.round(this@MainActivity, Ui.badBg, 16)
+        addView(Ui.text(this@MainActivity, tr("This phone is not managed", "Ce téléphone n'est pas géré"), 15f, Ui.bad, true))
+        addView(Ui.text(this@MainActivity, tr(
+            "The app was installed by hand, so it cannot be locked or controlled from the dashboard. Ask your administrator to reset the phone and set it up with the QR code.",
+            "L'application a été installée à la main : le téléphone ne peut pas être verrouillé ni contrôlé depuis le tableau de bord. Demandez à votre administrateur de le réinitialiser et de le configurer avec le code QR."
+        ), 13f, Ui.bad).apply { setPadding(0, dp(4), 0, 0) })
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            .apply { setMargins(dp(16), dp(14), dp(16), 0) }
     }
 
     private fun header(p: Prefs): View {
-        val row = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(20), dp(36), dp(20), dp(12))
-        }
-        row.addView(ImageView(this).apply { setImageResource(R.drawable.ic_logo_mark) }, LinearLayout.LayoutParams(dp(40), dp(45)))
-        val col = LinearLayout(this).apply {
+        val ctx = this
+        val box = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), 0, 0, 0)
+            background = GradientDrawable().apply {
+                setColor(Ui.navy)
+                cornerRadii = floatArrayOf(0f, 0f, 0f, 0f, Ui.dpf(ctx, 28), Ui.dpf(ctx, 28), Ui.dpf(ctx, 28), Ui.dpf(ctx, 28))
+            }
+            setPadding(dp(22), dp(18), dp(22), dp(24))
         }
-        col.addView(TextView(this).apply {
-            text = if (p.deviceName.isNotEmpty()) p.deviceName else "Confiance Kiosk"
-            setTextColor(navy)
-            textSize = 22f
-            typeface = Typeface.DEFAULT_BOLD
+        val top = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        top.addView(ImageView(ctx).apply {
+            setImageResource(R.drawable.ic_logo_mark)
+            setColorFilter(Color.WHITE)
+        }, LinearLayout.LayoutParams(dp(30), dp(34)))
+        top.addView(Ui.text(ctx, "CONFIANCE", 13f, Color.parseColor("#C9D3F5"), true).apply {
+            letterSpacing = 0.18f
+            setPadding(dp(12), 0, 0, 0)
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        if (p.enrolled) {
+            val fresh = p.lastCheckIn > 0 && System.currentTimeMillis() - p.lastCheckIn < 12 * 60_000
+            top.addView(
+                if (fresh) Ui.chip(ctx, "● " + tr("Online", "En ligne"), Ui.good, Ui.goodBg)
+                else Ui.chip(ctx, "● " + tr("Offline", "Hors ligne"), Ui.warn, Ui.warnBg)
+            )
+        }
+        box.addView(top)
+        box.addView(Ui.text(ctx, tr("Welcome", "Bienvenue"), 14f, Color.parseColor("#C9D3F5")).apply { setPadding(0, dp(22), 0, 0) })
+        box.addView(Ui.text(ctx, if (p.deviceName.isNotEmpty()) p.deviceName else "Confiance Kiosk", 26f, Color.WHITE, true).apply {
             // Hidden shortcut to the administrator menu: tap the title 5 times quickly.
             setOnClickListener {
                 val now = System.currentTimeMillis()
@@ -179,22 +197,18 @@ class MainActivity : Activity() {
             }
         })
         if (p.message.isNotBlank()) {
-            col.addView(TextView(this).apply {
-                text = p.message
-                setTextColor(Color.parseColor("#B45309"))
-                textSize = 14f
-                setPadding(0, dp(4), 0, 0)
+            box.addView(Ui.text(ctx, p.message, 14f, Color.parseColor("#FDE68A")).apply {
+                background = Ui.round(ctx, Color.parseColor("#33FFFFFF"), 12)
+                setPadding(dp(12), dp(8), dp(12), dp(8))
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                    .apply { topMargin = dp(12) }
             })
         }
         if (p.released) {
-            col.addView(TextView(this).apply {
-                text = "Device released by administrator"
-                setTextColor(Color.parseColor("#B91C1C"))
-                textSize = 13f
-            })
+            box.addView(Ui.text(ctx, tr("Released by the administrator", "Libéré par l'administrateur"), 13f, Color.parseColor("#FCA5A5"))
+                .apply { setPadding(0, dp(8), 0, 0) })
         }
-        row.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        return row
+        return box
     }
 
     /** Version label + settings button. Always visible so the installed version is easy to check. */
@@ -202,34 +216,33 @@ class MainActivity : Activity() {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(20), dp(8), dp(12), dp(14))
+            setPadding(dp(22), dp(10), dp(16), dp(14))
         }
-        row.addView(TextView(this).apply {
-            text = "Confiance Kiosk  v${version()}"
-            setTextColor(slate)
-            textSize = 12f
-        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        row.addView(Button(this).apply {
-            text = "Settings"
-            isAllCaps = false
-            setOnClickListener { settingsDialog() }
+        row.addView(Ui.text(this, "Confiance Kiosk · v${version()}", 12f, Ui.muted),
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        row.addView(Ui.secondaryButton(this, tr("Settings", "Réglages")) { settingsDialog() }.apply {
+            minHeight = dp(40); textSize = 14f
+            setPadding(dp(18), dp(8), dp(18), dp(8))
         })
         return row
     }
 
-    private fun centerText(msg: String): View = TextView(this).apply {
-        text = msg
-        setTextColor(slate)
-        textSize = 16f
+    private fun emptyState(title: String, msg: String): View = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER
+        setPadding(dp(36), 0, dp(36), 0)
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
+        addView(ImageView(this@MainActivity).apply { setImageResource(R.drawable.ic_logo_mark); alpha = 0.18f },
+            LinearLayout.LayoutParams(dp(56), dp(63)))
+        addView(Ui.text(this@MainActivity, title, 18f, Ui.ink, true).apply { gravity = Gravity.CENTER; setPadding(0, dp(16), 0, dp(4)) })
+        addView(Ui.text(this@MainActivity, msg, 14f, Ui.muted).apply { gravity = Gravity.CENTER })
     }
 
     private fun appGrid(p: Prefs): View {
         val columns = if (resources.displayMetrics.widthPixels / resources.displayMetrics.density > 600) 4 else 2
         val grid = GridLayout(this).apply {
             columnCount = columns
-            setPadding(dp(12), dp(8), dp(12), dp(8))
+            setPadding(dp(12), dp(16), dp(12), dp(8))
         }
         val pm = packageManager
         p.allowedApps.forEach { (pkg, label) ->
@@ -237,23 +250,26 @@ class MainActivity : Activity() {
             val tile = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                setPadding(dp(8), dp(16), dp(8), dp(16))
-                setBackgroundColor(Color.WHITE)
-                alpha = if (launch == null) 0.4f else 1f
+                setPadding(dp(10), dp(20), dp(10), dp(18))
+                background = Ui.tappable(this@MainActivity, Color.WHITE, 22, Ui.line)
+                elevation = Ui.dpf(this@MainActivity, 1)
+                alpha = if (launch == null) 0.5f else 1f
+                isClickable = true; isFocusable = true
             }
             val icon = ImageView(this)
             runCatching { icon.setImageDrawable(pm.getApplicationIcon(pkg)) }
-            tile.addView(icon, LinearLayout.LayoutParams(dp(72), dp(72)))
-            tile.addView(TextView(this).apply {
-                text = if (launch == null) "$label\n(not installed)" else label
-                setTextColor(navy)
-                textSize = 15f
+            tile.addView(icon, LinearLayout.LayoutParams(dp(64), dp(64)))
+            tile.addView(Ui.text(this, label, 15f, Ui.ink, true).apply {
                 gravity = Gravity.CENTER
-                setPadding(0, dp(8), 0, 0)
+                maxLines = 2
+                setPadding(0, dp(12), 0, 0)
             })
+            if (launch == null) {
+                tile.addView(Ui.text(this, tr("Not installed", "Non installée"), 12f, Ui.warn).apply { gravity = Gravity.CENTER })
+            }
             tile.setOnClickListener {
                 if (launch != null) startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                else Toast.makeText(this, "$label is not installed on this device", Toast.LENGTH_SHORT).show()
+                else Toast.makeText(this, tr("$label is not installed on this phone", "$label n'est pas installée sur ce téléphone"), Toast.LENGTH_SHORT).show()
             }
             val lp = GridLayout.LayoutParams(
                 GridLayout.spec(GridLayout.UNDEFINED, 1f),
@@ -263,77 +279,117 @@ class MainActivity : Activity() {
         }
         return ScrollView(this).apply {
             addView(grid)
+            overScrollMode = View.OVER_SCROLL_NEVER
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
         }
     }
 
+    private fun field(hint: String, type: Int, initial: String = ""): EditText = EditText(this).apply {
+        this.hint = hint
+        setHintTextColor(Ui.muted); setTextColor(Ui.ink)
+        textSize = 16f
+        inputType = type
+        setText(initial)
+        background = Ui.round(this@MainActivity, Color.parseColor("#F8FAFC"), 12, Ui.line)
+        setPadding(dp(14), dp(12), dp(14), dp(12))
+    }
+
     /** Shown until the device has enrolled (e.g. if it was set up without a QR code). */
     private fun enrollView(p: Prefs): View {
-        val box = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(24), dp(12), dp(24), dp(12))
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
-        }
-        val hintView = TextView(this).apply {
-            text = if (p.hasEnrollConfig) "Connecting to the management server…"
-            else "This device is not enrolled yet. Enter the server address and the enrollment code from the dashboard (Add devices → Code)."
-            setTextColor(slate)
-            textSize = 15f
-        }
-        box.addView(hintView)
-        if (p.serverUrl.isNotEmpty()) {
-            box.addView(TextView(this).apply {
-                text = "Server: ${p.serverUrl}"
-                setTextColor(slate)
-                textSize = 13f
-                setPadding(0, dp(8), 0, 0)
-            })
+        val ctx = this
+        val card = Ui.cardBox(ctx, 20)
+        if (p.hasEnrollConfig) {
+            card.addView(Ui.text(ctx, tr("Connecting…", "Connexion…"), 20f, Ui.ink, true))
+            card.addView(Ui.text(ctx, tr("This phone is contacting the management server.", "Ce téléphone contacte le serveur de gestion."), 14f, Ui.muted)
+                .apply { setPadding(0, dp(4), 0, dp(10)) })
+            if (p.serverUrl.isNotEmpty()) card.addView(Ui.text(ctx, p.serverUrl, 13f, Ui.muted))
+        } else {
+            card.addView(Ui.text(ctx, tr("Set up this phone", "Configurer ce téléphone"), 20f, Ui.ink, true))
+            card.addView(Ui.text(ctx, tr(
+                "Enter the enrollment code shown in the dashboard (Add phones → Code).",
+                "Saisissez le code d'inscription affiché dans le tableau de bord (Ajouter des téléphones → Code)."
+            ), 14f, Ui.muted).apply { setPadding(0, dp(4), 0, dp(14)) })
         }
         if (p.lastError.isNotEmpty()) {
-            box.addView(TextView(this).apply {
-                text = "Problem: ${p.lastError}"
-                setTextColor(Color.parseColor("#B91C1C"))
-                textSize = 13f
-                setPadding(0, dp(6), 0, dp(6))
+            card.addView(Ui.text(ctx, p.lastError, 13f, Ui.bad).apply {
+                background = Ui.round(ctx, Ui.badBg, 12)
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                    .apply { topMargin = dp(12) }
             })
         }
         if (p.hasEnrollConfig) {
-            box.addView(Button(this).apply {
-                text = "Retry now"
-                setOnClickListener { AgentService.retryNow(this@MainActivity) }
-            })
-        }
-        if (!p.hasEnrollConfig) {
-            val url = EditText(this).apply {
-                hint = "https://dashboard.example.com"
-                setHintTextColor(Color.GRAY); setTextColor(navy)
-                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-                setText(p.serverUrl.ifEmpty { "https://confiance-kiosk.netlify.app" })
-            }
-            val token = EditText(this).apply {
-                hint = "Enrollment code (e.g. ABCDE-FGHJK)"
-                setHintTextColor(Color.GRAY); setTextColor(navy)
-                // No autocorrect / suggestions / auto-case: the code must reach the server exactly as typed.
-                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or
-                    InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
-            }
-            val btn = Button(this).apply {
-                text = "Enroll"
-                setOnClickListener {
-                    val address = url.text.toString().trim()
-                    if (!address.startsWith("https://")) {
-                        Toast.makeText(this@MainActivity, "The server address must start with https://", Toast.LENGTH_LONG).show()
-                        return@setOnClickListener
-                    }
+            card.addView(Ui.gap(ctx, 14))
+            card.addView(Ui.primaryButton(ctx, tr("Try again now", "Réessayer maintenant")) { AgentService.retryNow(this) })
+        } else {
+            val url = field("https://…", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS,
+                p.serverUrl.ifEmpty { Provision.DEFAULT_SERVER })
+            // No autocorrect / suggestions: the code must reach the server exactly as typed.
+            val token = field(tr("Enrollment code", "Code d'inscription") + "  (ABCDE-FGHJK)",
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or
+                    InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD)
+            card.addView(Ui.text(ctx, tr("Server", "Serveur"), 12f, Ui.muted))
+            card.addView(url)
+            card.addView(Ui.gap(ctx, 12))
+            card.addView(Ui.text(ctx, tr("Code", "Code"), 12f, Ui.muted))
+            card.addView(token)
+            card.addView(Ui.gap(ctx, 16))
+            card.addView(Ui.primaryButton(ctx, tr("Enroll", "Inscrire")) {
+                val address = url.text.toString().trim()
+                if (!address.startsWith("https://")) {
+                    Toast.makeText(this, tr("The server address must start with https://", "L'adresse du serveur doit commencer par https://"), Toast.LENGTH_LONG).show()
+                } else {
                     p.serverUrl = address
                     p.enrollToken = token.text.toString().trim()
-                    AgentService.start(this@MainActivity)
+                    AgentService.start(this)
                     render()
                 }
-            }
-            box.addView(url); box.addView(token); box.addView(btn)
+            })
         }
-        return box
+        return ScrollView(ctx).apply {
+            addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                .apply { setMargins(dp(16), dp(18), dp(16), dp(8)) })
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
+        }
+    }
+
+    // ---------- Sheets ----------
+
+    private fun showSheet(title: String, build: (Dialog, LinearLayout) -> Unit) {
+        dialogOpen = true
+        val (dlg, col) = Ui.sheet(this, title) { dialogOpen = false }
+        build(dlg, col)
+        dlg.show()
+    }
+
+    private fun infoRow(k: String, v: String): View = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        setPadding(0, dp(7), 0, dp(7))
+        addView(Ui.text(this@MainActivity, k, 14f, Ui.muted), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        addView(Ui.text(this@MainActivity, v, 14f, Ui.ink, true).apply { gravity = Gravity.END },
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.3f))
+    }
+
+    private fun slider(label: String, max: Int, value: Int, onChange: (Int) -> Unit): View = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(0, dp(10), 0, 0)
+        addView(Ui.text(this@MainActivity, label, 13f, Ui.muted))
+        addView(SeekBar(this@MainActivity).apply {
+            this.max = max
+            progress = value
+            progressTintList = ColorStateList.valueOf(Ui.navy)
+            thumbTintList = ColorStateList.valueOf(Ui.navy)
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(s: SeekBar, v: Int, fromUser: Boolean) { if (fromUser) onChange(v) }
+                override fun onStartTrackingTouch(s: SeekBar) {}
+                override fun onStopTrackingTouch(s: SeekBar) {}
+            })
+        })
+    }
+
+    private fun actionRow(col: LinearLayout, label: String, primary: Boolean = false, onClick: () -> Unit) {
+        col.addView(Ui.gap(this, 8))
+        col.addView(if (primary) Ui.primaryButton(this, label, onClick) else Ui.secondaryButton(this, label, onClick))
     }
 
     // ---------- Settings (everyone) ----------
@@ -341,77 +397,37 @@ class MainActivity : Activity() {
     private fun settingsDialog() {
         val p = Prefs(this)
         val audio = getSystemService(AudioManager::class.java)
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(24), dp(12), dp(24), dp(4))
-        }
-        fun label(t: String) = TextView(this).apply { text = t; setTextColor(slate); textSize = 13f; setPadding(0, dp(12), 0, dp(2)) }
-        fun row(k: String, v: String) = TextView(this).apply { text = "$k:  $v"; setTextColor(navy); textSize = 14f; setPadding(0, dp(2), 0, dp(2)) }
+        showSheet(tr("Settings", "Réglages")) { dlg, col ->
+            col.addView(infoRow(tr("App version", "Version"), version()))
+            col.addView(infoRow(tr("Device", "Appareil"), p.deviceName.ifEmpty { tr("not enrolled", "non inscrit") }))
+            col.addView(infoRow(tr("Management", "Gestion"),
+                if (Policy.isOwner(this)) tr("Managed", "Géré") else tr("Not managed", "Non géré")))
+            col.addView(infoRow(tr("Last check-in", "Dernière connexion"),
+                if (p.lastCheckIn > 0) DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(p.lastCheckIn)) else tr("never", "jamais")))
+            col.addView(infoRow(tr("Network", "Réseau"), DeviceInfo.status(this).optString("network", "none")))
 
-        content.addView(row("App version", version()))
-        content.addView(row("Device", p.deviceName.ifEmpty { "not enrolled" }))
-        content.addView(row("Management", if (Policy.isOwner(this)) "Managed device" else "Not managed"))
-        content.addView(row("Last check-in", if (p.lastCheckIn > 0) DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(p.lastCheckIn)) else "never"))
-        content.addView(row("Network", DeviceInfo.status(this).optString("network", "none")))
-
-        content.addView(label("Volume"))
-        content.addView(SeekBar(this).apply {
-            max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-            progress = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(s: SeekBar, v: Int, fromUser: Boolean) {
-                    if (fromUser) runCatching { audio.setStreamVolume(AudioManager.STREAM_MUSIC, v, 0) }
-                }
-                override fun onStartTrackingTouch(s: SeekBar) {}
-                override fun onStopTrackingTouch(s: SeekBar) {}
-            })
-        })
-
-        content.addView(label("Screen brightness (this screen)"))
-        content.addView(SeekBar(this).apply {
-            max = 100
+            col.addView(slider(tr("Volume", "Volume"), audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
+                audio.getStreamVolume(AudioManager.STREAM_MUSIC)) { v -> runCatching { audio.setStreamVolume(AudioManager.STREAM_MUSIC, v, 0) } })
             val cur = window.attributes.screenBrightness
-            progress = if (cur < 0) 60 else (cur * 100).toInt()
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(s: SeekBar, v: Int, fromUser: Boolean) {
-                    if (!fromUser) return
-                    val lp = window.attributes
-                    lp.screenBrightness = (v.coerceAtLeast(5)) / 100f
-                    window.attributes = lp
-                }
-                override fun onStartTrackingTouch(s: SeekBar) {}
-                override fun onStopTrackingTouch(s: SeekBar) {}
+            col.addView(slider(tr("Brightness", "Luminosité"), 100, if (cur < 0) 60 else (cur * 100).toInt()) { v ->
+                val lp = window.attributes
+                lp.screenBrightness = v.coerceAtLeast(5) / 100f
+                window.attributes = lp
             })
-        })
 
-        content.addView(Button(this).apply {
-            text = "Check for updates now"
-            isAllCaps = false
-            setOnClickListener {
-                AgentService.retryNow(this@MainActivity)
-                Toast.makeText(this@MainActivity, "Checking with the server…", Toast.LENGTH_SHORT).show()
+            col.addView(Ui.gap(this, 6))
+            actionRow(col, tr("Check for updates now", "Rechercher des mises à jour")) {
+                AgentService.retryNow(this)
+                Toast.makeText(this, tr("Checking with the server…", "Vérification auprès du serveur…"), Toast.LENGTH_SHORT).show()
             }
-        })
-        if (p.pinHash.isNotEmpty()) {   // only when the dashboard enabled an exit PIN
-            content.addView(Button(this).apply {
-                text = "Administrator…"
-                isAllCaps = false
-                setOnClickListener { askPin { adminMenu() } }
-            })
-        } else {
-            content.addView(TextView(this).apply {
-                text = "This phone is managed from the dashboard."
-                setTextColor(slate); textSize = 12f; setPadding(0, dp(10), 0, 0)
-            })
+            if (p.pinHash.isNotEmpty()) {   // only when the dashboard enabled an exit PIN
+                actionRow(col, tr("Administrator…", "Administrateur…")) { dlg.dismiss(); askPin { adminMenu() } }
+            } else {
+                col.addView(Ui.text(this, tr("This phone is managed from the dashboard.", "Ce téléphone est géré depuis le tableau de bord."), 12f, Ui.muted)
+                    .apply { setPadding(0, dp(12), 0, 0) })
+            }
+            actionRow(col, tr("Close", "Fermer"), primary = true) { dlg.dismiss() }
         }
-
-        dialogOpen = true
-        AlertDialog.Builder(this)
-            .setTitle("Settings")
-            .setView(ScrollView(this).apply { addView(content) })
-            .setPositiveButton("Close", null)
-            .setOnDismissListener { dialogOpen = false }
-            .show()
     }
 
     // ---------- Administrator (PIN) ----------
@@ -420,25 +436,22 @@ class MainActivity : Activity() {
     private fun askPin(then: () -> Unit) {
         val p = Prefs(this)
         if (p.pinHash.isEmpty()) {
-            Toast.makeText(this, "No admin PIN has been set in the dashboard", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, tr("No admin PIN has been set in the dashboard", "Aucun code administrateur n'est défini dans le tableau de bord"), Toast.LENGTH_LONG).show()
             return
         }
         val wait = p.pinLockUntil - System.currentTimeMillis()
         if (wait > 0) {
-            Toast.makeText(this, "Too many wrong attempts. Try again in ${(wait / 1000) + 1} s", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, tr("Too many wrong attempts. Try again in ${(wait / 1000) + 1} s", "Trop d'essais. Réessayez dans ${(wait / 1000) + 1} s"), Toast.LENGTH_LONG).show()
             return
         }
-        val input = EditText(this).apply {
-            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
-            hint = "Admin PIN"
-        }
-        dialogOpen = true
-        AlertDialog.Builder(this)
-            .setTitle("Administrator")
-            .setView(input)
-            .setPositiveButton("OK") { _, _ ->
+        showSheet(tr("Administrator", "Administrateur")) { dlg, col ->
+            val input = field(tr("Admin PIN", "Code administrateur"), InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD)
+            col.addView(input)
+            col.addView(Ui.gap(this, 14))
+            col.addView(Ui.primaryButton(this, "OK") {
                 if (Policy.checkPin(this, input.text.toString())) {
                     p.pinFails = 0
+                    dlg.dismiss()
                     then()
                 } else {
                     p.pinFails += 1
@@ -446,41 +459,37 @@ class MainActivity : Activity() {
                         val seconds = minOf(1800L, 60L shl (p.pinFails - 5).coerceAtMost(5))
                         p.pinLockUntil = System.currentTimeMillis() + seconds * 1000
                     }
-                    Toast.makeText(this, "Wrong PIN", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, tr("Wrong PIN", "Code incorrect"), Toast.LENGTH_SHORT).show()
+                    input.setText("")
                 }
-            }
-            .setNegativeButton("Cancel", null)
-            .setOnDismissListener { dialogOpen = false }
-            .show()
+            })
+            actionRow(col, tr("Cancel", "Annuler")) { dlg.dismiss() }
+        }
     }
 
     private fun adminMenu() {
         val p = Prefs(this)
-        val items = mutableListOf<String>()
-        items += "Wi-Fi networks"
-        items += "Diagnostics"
-        items += if (p.released) "Re-lock kiosk" else "Release device (exit kiosk)"
-        if (p.released) items += "Open Android settings"
-        items += "Close"
-        dialogOpen = true
-        AlertDialog.Builder(this)
-            .setTitle("Administrator")
-            .setItems(items.toTypedArray()) { _, which ->
-                when (items[which]) {
-                    "Wi-Fi networks" -> openWifiPanel()
-                    "Diagnostics" -> diagnostics()
-                    "Release device (exit kiosk)" -> {
-                        Policy.release(this)
-                        runCatching { stopLockTask() }
-                        startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                    }
-                    "Re-lock kiosk" -> { Policy.relock(this); render(); ensureLockTask() }
-                    "Open Android settings" ->
-                        startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        showSheet(tr("Administrator", "Administrateur")) { dlg, col ->
+            actionRow(col, tr("Wi-Fi networks", "Réseaux Wi-Fi")) { dlg.dismiss(); openWifiPanel() }
+            actionRow(col, tr("Diagnostics", "Diagnostic")) { dlg.dismiss(); diagnostics() }
+            if (p.released) {
+                actionRow(col, tr("Re-lock kiosk", "Reverrouiller le kiosque")) {
+                    dlg.dismiss(); Policy.relock(this); render(); ensureLockTask()
+                }
+                actionRow(col, tr("Open Android settings", "Ouvrir les réglages Android")) {
+                    dlg.dismiss()
+                    startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+            } else {
+                actionRow(col, tr("Release device (exit kiosk)", "Libérer l'appareil (quitter le kiosque)")) {
+                    dlg.dismiss()
+                    Policy.release(this)
+                    runCatching { stopLockTask() }
+                    startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }
             }
-            .setOnDismissListener { dialogOpen = false }
-            .show()
+            actionRow(col, tr("Close", "Fermer"), primary = true) { dlg.dismiss() }
+        }
     }
 
     /** Lets the system Wi-Fi panel open (the Settings app is otherwise blocked) and re-locks when we come back. */
@@ -495,22 +504,23 @@ class MainActivity : Activity() {
         }.onFailure {
             wifiPanelOpened = false
             Policy.apply(this)
-            Toast.makeText(this, "Could not open Wi-Fi settings", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, tr("Could not open Wi-Fi settings", "Impossible d'ouvrir les réglages Wi-Fi"), Toast.LENGTH_LONG).show()
         }
     }
 
     private fun diagnostics() {
         val p = Prefs(this)
         val s = DeviceInfo.status(this)
-        val text = buildString {
-            appendLine("Version: ${version()}")
-            appendLine("Server: ${p.serverUrl}")
-            appendLine("Device owner: ${Policy.isOwner(this@MainActivity)}")
-            appendLine("Battery: ${s.optInt("battery")}%  Network: ${s.optString("network")}")
-            appendLine("Free storage: ${s.optLong("freeStorageMb")} MB")
-            appendLine("Last problem: ${p.lastError.ifEmpty { "none" }}")
-            appendLine("Last crash: ${p.lastCrash.ifEmpty { "none" }}")
+        showSheet(tr("Diagnostics", "Diagnostic")) { dlg, col ->
+            col.addView(infoRow(tr("Version", "Version"), version()))
+            col.addView(infoRow(tr("Server", "Serveur"), p.serverUrl.ifEmpty { "-" }))
+            col.addView(infoRow(tr("Device owner", "Propriétaire de l'appareil"), Policy.isOwner(this).toString()))
+            col.addView(infoRow(tr("Battery", "Batterie"), "${s.optInt("battery")}%"))
+            col.addView(infoRow(tr("Network", "Réseau"), s.optString("network")))
+            col.addView(infoRow(tr("Free storage", "Stockage libre"), "${s.optLong("freeStorageMb")} MB"))
+            col.addView(infoRow(tr("Last problem", "Dernier problème"), p.lastError.ifEmpty { tr("none", "aucun") }))
+            col.addView(infoRow(tr("Last crash", "Dernier plantage"), p.lastCrash.ifEmpty { tr("none", "aucun") }))
+            actionRow(col, tr("Close", "Fermer"), primary = true) { dlg.dismiss() }
         }
-        AlertDialog.Builder(this).setTitle("Diagnostics").setMessage(text).setPositiveButton("Close", null).show()
     }
 }

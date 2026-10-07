@@ -21,7 +21,7 @@
     <application
         android:name=".KioskApp"
         android:allowBackup="false"
-        android:icon="@drawable/ic_launcher"
+        android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
         android:usesCleartextTraffic="false">
@@ -48,6 +48,7 @@
         <!-- Needed for QR / managed provisioning on Android 9+ and 12+. -->
         <activity
             android:name=".ProvisioningModeActivity"
+            android:label="@string/app_name"
             android:exported="true"
             android:permission="android.permission.BIND_DEVICE_ADMIN"
             android:theme="@android:style/Theme.Translucent.NoTitleBar">
@@ -58,6 +59,7 @@
         </activity>
         <activity
             android:name=".PolicyComplianceActivity"
+            android:label="@string/app_name"
             android:exported="true"
             android:permission="android.permission.BIND_DEVICE_ADMIN"
             android:theme="@android:style/Theme.Translucent.NoTitleBar">
@@ -82,7 +84,6 @@
 
         <receiver
             android:name=".BootReceiver"
-           
             android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
@@ -98,6 +99,11 @@
         <receiver
             android:name=".InstallResultReceiver"
             android:exported="false" />
+
+        <service
+            android:name=".PostSetupJobService"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
 
         <service
             android:name=".AgentService"
