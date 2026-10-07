@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createApp, type Seed } from "./lib/app.ts";
 
-const ENV_KEYS = ["SESSION_SECRET", "ADMIN_EMAIL", "ADMIN_PASSWORD", "PUBLIC_URL"];
+const ENV_KEYS = ["SESSION_SECRET", "ADMIN_EMAIL", "ADMIN_PASSWORD", "PUBLIC_URL", "SUPABASE_URL", "SUPABASE_KEY"];
 
 /** The APK shipped with the deploy (see `included_files` in netlify.toml); installed as release #1 on first use. */
 async function loadSeed(): Promise<Seed | null> {

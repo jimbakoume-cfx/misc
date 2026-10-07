@@ -69,10 +69,11 @@ async function overview() {
       ${s(o.outdated, `Old app version${o.currentVersion ? ` (latest ${esc(o.currentVersion)})` : ""}`, o.outdated ? "warn" : "")}
       ${s(o.notLocked, "Not managed / not locked", o.notLocked ? "bad" : "")}
       ${s(o.pendingApproval, "Waiting for your approval", o.pendingApproval ? "warn" : "")}
+      ${o.push ? s(`${o.live}/${o.total}`, "Phones live (instant commands)", o.total && o.live < o.total ? "warn" : "ok") : s("off", "Instant commands (not configured)", "warn")}
     </div>
     ${o.pendingApproval ? `<div class="card" style="margin-bottom:16px"><b>${o.pendingApproval} new phone(s) are waiting for approval.</b> They are locked down but show no apps until you approve them. <button class="btn" id="apprAll">Review &amp; approve</button></div>` : ""}
     ${o.total === 0 ? `<div class="card">No devices yet. Go to <b>Add devices</b> to generate a QR code and enrol your first phone.</div>` : ""}
-    <p class="muted" id="ovNote">Devices check in every 5 minutes. "Online" means a check-in within the last 12 minutes. This page refreshes automatically.</p>`;
+    <p class="muted" id="ovNote">${o.push ? "Buttons here reach live phones within seconds; phones that are not live pick them up at their next check-in (every 5 minutes)." : "Devices check in every 5 minutes, so buttons here can take up to 5 minutes to reach a phone."} "Online" means a check-in within the last 12 minutes. This page refreshes automatically.</p>`;
 }
 
 // ---------- Devices ----------
@@ -100,7 +101,7 @@ async function devices() {
       <tbody>${list.map((d) => `<tr class="clickable" data-id="${d.id}">
         <td><input type="checkbox" class="sel" data-id="${d.id}" ${selected.has(d.id) ? "checked" : ""}></td>
         <td><b>${esc(d.name)}</b>${!d.approved ? ' <span class="tag warn">needs approval</span>' : ""}${d.removing ? ' <span class="tag warn">removing…</span>' : ""}${d.released ? ' <span class="tag bad">released</span>' : ""}${!d.deviceOwner ? ' <span class="tag bad">not managed</span>' : ""}</td>
-        <td><span class="dot ${d.state}"></span>${d.state}</td>
+        <td><span class="dot ${d.state}"></span>${d.state}${d.live ? ' <span class="tag" title="Connected for instant commands">⚡ live</span>' : ""}</td>
         <td>${d.battery == null || d.battery < 0 ? "—" : d.battery + "%" + (d.charging ? " ⚡" : "")}</td>
         <td>${esc(gname(d.groupId))}${d.hasOverride ? ' <span class="tag">custom</span>' : ""}</td>
         <td>${esc(d.model)}</td><td>${esc(d.agentVersion ?? "—")}</td><td>${ago(d.lastSeen)}</td></tr>`).join("") || `<tr><td colspan="8" class="muted">No devices match.</td></tr>`}

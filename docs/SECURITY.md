@@ -20,6 +20,10 @@
 - Transport: HTTPS only (the app refuses http://). Each phone has its own secret token, stored hashed on the server.
 - Updates: APKs must be signed with the same key (Android enforces this) and match the SHA-256 the server announces.
 
+## Instant-command channel
+- Supabase only carries an empty "wake up" ping on a per-phone channel named with 128 random bits. Someone who learned a channel
+  name could only make that phone check in early; commands, policy and data are only ever served over the authenticated API.
+
 ## What you must protect
 - The **signing keystore** (`kiosk-release.keystore` + its password): whoever holds it can ship an app that phones will accept.
 - The **dashboard admin accounts** (turn on two-factor) and the **enrolment QR** until its expiry.

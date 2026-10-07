@@ -55,6 +55,7 @@ object DeviceInfo {
             .put("deviceOwner", dpm.isDeviceOwnerApp(ctx.packageName))
             .put("released", Prefs(ctx).released)
             .put("lastCrash", Prefs(ctx).lastCrash)
+            .put("pushConnected", PushClient.connected)
             .put("uptimeMin", android.os.SystemClock.elapsedRealtime() / 60000)
     }
 

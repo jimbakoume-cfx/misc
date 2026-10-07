@@ -30,6 +30,8 @@ export interface Deps {
   env: Record<string, string | undefined>;
   /** Optional first release shipped with the deploy; installed on first request if no release exists. */
   loadSeed?: () => Promise<Seed | null>;
+  /** For tests; defaults to the global fetch. */
+  fetch?: typeof fetch;
 }
 
 class HttpError extends Error {
@@ -67,6 +69,7 @@ interface Route { method: string; re: RegExp; auth: Auth; fn: Handler }
 
 export function createApp(deps: Deps): (req: Request) => Promise<Response> {
   const { db, blobs, env } = deps;
+  const doFetch = deps.fetch ?? fetch;
   const get = async (sql: string, ...p: any[]) => (await db.query(toPg(sql), p))[0] as Row | undefined;
   const all = (sql: string, ...p: any[]) => db.query(toPg(sql), p) as Promise<Row[]>;
   const run = async (sql: string, ...p: any[]) => { await db.query(toPg(sql), p); };
@@ -112,6 +115,38 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
   const currentRelease = () => get("SELECT * FROM releases ORDER BY version_code DESC, id DESC LIMIT 1");
 
   // ---------- policy ----------
+  // ---------- instant push (Supabase Realtime) ----------
+  // Each phone listens on a private channel whose name is a random secret only that phone knows. The server only ever
+  // sends an empty "wake" ping; the phone then asks the dashboard (authenticated) for its commands and policy.
+  const pushOn = !!(env.SUPABASE_URL && env.SUPABASE_KEY);
+  const channelOf = (pushId: string) => `dev-${pushId}`;
+
+  async function ensurePushId(d: Row): Promise<string> {
+    if (d.push_id) return d.push_id as string;
+    const id = randomToken(16);
+    await run("UPDATE devices SET push_id=? WHERE id=? AND push_id IS NULL", id, d.id);
+    return ((await get("SELECT push_id FROM devices WHERE id=?", d.id))?.push_id as string) ?? id;
+  }
+
+  /** Pings phones so they check in now. Best effort: failures never break the request (phones still poll). */
+  async function wake(ids: number[]) {
+    if (!pushOn || !ids.length) return;
+    const rows = (await Promise.all(ids.map((id) => get("SELECT id,push_id FROM devices WHERE id=?", id)))).filter((r) => r?.push_id) as Row[];
+    for (let i = 0; i < rows.length; i += 100) {
+      const batch = rows.slice(i, i + 100).map((r) => ({ topic: channelOf(r.push_id), event: "wake", payload: {}, private: false }));
+      try {
+        await doFetch(`${env.SUPABASE_URL!.replace(/\/$/, "")}/realtime/v1/api/broadcast`, {
+          method: "POST",
+          headers: { apikey: env.SUPABASE_KEY!, "content-type": "application/json" },
+          body: JSON.stringify({ messages: batch }),
+          signal: AbortSignal.timeout(3000),
+        });
+      } catch (e) { console.warn("push wake failed:", (e as Error).message); }
+    }
+  }
+  const wakeAll = async () => wake((await all("SELECT id FROM devices")).map((r) => r.id));
+  const wakeGroup = async (gid: number) => wake((await all("SELECT id FROM devices WHERE group_id=?", gid)).map((r) => r.id));
+
   const policyEpoch = async () => Number(await setting("policy_epoch", "1"));
   const bumpEpoch = async () => setSetting("policy_epoch", String((await policyEpoch()) + 1));
 
@@ -129,6 +164,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
       pinHash: (await setting("pin_enabled", "0")) === "1" ? await setting("pin_hash") : "",
       disableDebugging: (await setting("disable_debugging", "1")) === "1",
       intervalSec: HEARTBEAT_SEC,
+      push: pushOn ? { url: env.SUPABASE_URL, key: env.SUPABASE_KEY, channel: channelOf(await ensurePushId(d)) } : null,
     };
   }
 
@@ -156,7 +192,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
       deviceOwner: !!status.deviceOwner, released: !!status.released,
       freeStorageMb: status.freeStorageMb ?? null, uptimeMin: status.uptimeMin ?? null, notes: d.notes,
       hasOverride: d.allowed_override != null, removing: !!d.remove_pending, approved: !!d.approved,
-      lastCrash: status.lastCrash || "",
+      lastCrash: status.lastCrash || "", live: !!status.pushConnected,
     };
     if (full) {
       out.allowedOverride = d.allowed_override != null ? json(d.allowed_override, []) : null;
@@ -331,10 +367,10 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
       const n = Number((await get("SELECT COUNT(*)::int c FROM devices"))!.c) + 1;
       name = `${tok.label || "Device"}-${String(n).padStart(3, "0")}`;
       id = await insert(
-        `INSERT INTO devices(name,group_id,token_hash,android_id,serial,model,os_version,enrolled_at,last_seen,approved)
-         VALUES(?,?,?,?,?,?,?,?,?,?)`,
+        `INSERT INTO devices(name,group_id,token_hash,android_id,serial,model,os_version,enrolled_at,last_seen,approved,push_id)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
         name, tok.group_id, sha256(deviceToken), b.androidId ?? "", b.serial ?? "", b.model ?? "", b.osVersion ?? "", now(), now(),
-        (await setting("require_approval", "1")) === "1" ? 0 : 1);
+        (await setting("require_approval", "1")) === "1" ? 0 : 1, randomToken(16));
     }
     await run("UPDATE enroll_tokens SET uses=uses+1 WHERE token=?", tok.token);
     await audit("device", "enroll", `${name} (${b.model ?? "?"})`);
@@ -393,7 +429,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
       if (!st.deviceOwner || st.released) counts.notLocked++;
       if (!d.approved) counts.pendingApproval++;
     }
-    return { ...counts, currentVersion: rel?.version_name ?? null, intervalSec: HEARTBEAT_SEC };
+    return { ...counts, currentVersion: rel?.version_name ?? null, intervalSec: HEARTBEAT_SEC, push: pushOn, live: devices.filter((d) => json(d.status, {}).pushConnected).length };
   });
 
   add("GET", "/api/devices", "read", async (c) => {
@@ -428,6 +464,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
       sets.push("policy_version=policy_version+1");
       await run(`UPDATE devices SET ${sets.join(",")} WHERE id=?`, ...vals, d.id);
       await audit(who(c), "edit-device", d.name);
+      await wake([d.id]);
     }
     return view((await get("SELECT * FROM devices WHERE id=?", d.id))!, true);
   });
@@ -435,11 +472,14 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
     const d = await deviceOr404(c.params.id);
     await run("UPDATE devices SET approved=1 WHERE id=?", d.id);
     await audit(who(c), "approve-device", d.name);
+    await wake([d.id]);
     return { ok: true };
   });
   add("POST", "/api/devices/approve-all", "write", async (c) => {
-    const n = (await all("SELECT id FROM devices WHERE approved=0")).length;
+    const waiting = (await all("SELECT id FROM devices WHERE approved=0")).map((r) => r.id);
+    const n = waiting.length;
     await run("UPDATE devices SET approved=1 WHERE approved=0");
+    await wake(waiting);
     await audit(who(c), "approve-all-devices", `${n} device(s)`);
     return { approved: n };
   });
@@ -457,6 +497,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
     await run("UPDATE devices SET remove_pending=1 WHERE id=?", d.id);
     await queueCommand(d.id, "unenroll");
     await audit(who(c), "remove-device-requested", d.name);
+    await wake([d.id]);
     return { ok: true, removed: false, pending: true };
   });
 
@@ -467,6 +508,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
   async function sendCommand(actor: string, ids: number[], type: string, strict = false) {
     if (!COMMAND_TYPES.has(type)) throw new HttpError(400, "Unknown command");
     let n = 0, skipped = 0;
+    const queuedIds: number[] = [];
     for (const id of ids) {
       const d = await get("SELECT status FROM devices WHERE id=?", id);
       if (!d) continue;
@@ -476,9 +518,11 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
         continue;
       }
       await queueCommand(id, type);
+      queuedIds.push(id);
       n++;
     }
     await audit(actor, `command:${type}`, `${n} device(s)${skipped ? `, ${skipped} not managed` : ""}`);
+    await wake(queuedIds);
     return { n, skipped };
   }
   add("POST", "/api/devices/:id/commands", "write", async (c) => {
@@ -512,11 +556,14 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
       "message" in b ? String(b.message ?? "") : g.message, g.id);
     await bumpEpoch();
     await audit(who(c), "edit-group", g.name);
+    await wakeGroup(g.id);
     return { ok: true };
   });
   add("DELETE", "/api/groups/:id", "write", async (c) => {
+    const members = (await all("SELECT id FROM devices WHERE group_id=?", Number(c.params.id))).map((r) => r.id);
     await run("DELETE FROM device_groups WHERE id=?", Number(c.params.id));
     await bumpEpoch();
+    await wake(members);
     await audit(who(c), "delete-group", c.params.id);
     return { ok: true };
   });
@@ -604,12 +651,14 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
     const rows = (await all("SELECT * FROM devices")).filter((d) =>
       (gid == null || d.group_id === gid) && (json(d.status, {}).agentVersionCode ?? 0) < rel.version_code);
     for (const d of rows) await queueCommand(d.id, "update");
+    await wake(rows.map((d) => d.id));
     await audit(who(c), "rollout", `${rel.version_name} → ${rows.length} device(s)`);
     return { queued: rows.length };
   });
 
   // settings
   add("GET", "/api/settings", "read", async () => ({
+    pushConfigured: pushOn,
     pinSet: !!(await setting("pin_hash")),
     pinEnabled: (await setting("pin_enabled", "0")) === "1",
     requireApproval: (await setting("require_approval", "1")) === "1",
@@ -651,6 +700,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
     if ("wifiSsid" in b) await setSetting("wifi_ssid", String(b.wifiSsid).trim());
     if ("wifiPassword" in b && b.wifiPassword !== "") await setSetting("wifi_password", String(b.wifiPassword));
     await audit(who(c), "change-settings");
+    await wakeAll();
     return { ok: true };
   });
 
@@ -706,7 +756,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
         const s: Session = { ...signed, email: acct.email, role: acct.role };
         // Browser (cookie) requests that change data must carry our custom header: cross-site forms/fetches cannot.
         if (viaCookie && !["GET", "HEAD"].includes(req.method) && req.headers.get("x-requested-with") !== "confiance-dashboard")
-          throw new HttpError(403, "Blocked: missing request header");
+          throw new HttpError(403, "Your dashboard page is out of date. Reload it (Ctrl+F5) and try again.");
         if (matched.auth === "write" && s.role !== "admin") throw new HttpError(403, "Read-only account");
         if (!url.pathname.startsWith("/api/me") && url.pathname !== "/api/logout" && (await needs2faSetup(s)))
           return reply({ error: "Set up two-factor sign-in on the Account page first", need2faSetup: true }, 403);

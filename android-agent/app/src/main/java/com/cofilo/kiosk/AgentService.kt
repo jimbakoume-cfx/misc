@@ -21,6 +21,8 @@ import kotlin.concurrent.thread
 class AgentService : Service() {
     @Volatile private var running = false
     private var worker: Thread? = null
+    private val wakeSignal = java.util.concurrent.Semaphore(0)
+    private val push = PushClient { wakeSignal.release() }
     private val pendingAcks = JSONArray()
     private var lastPolicyVersion = -1
 
@@ -38,7 +40,8 @@ class AgentService : Service() {
 
     override fun onDestroy() {
         running = false
-        worker?.interrupt()
+        wakeSignal.release()
+        push.stop()
         if (instance === this) instance = null
         super.onDestroy()
     }
@@ -62,6 +65,7 @@ class AgentService : Service() {
         runCatching { Policy.apply(this) }
         while (running) {
             val prefs = Prefs(this)
+            wakeSignal.drainPermits()
             runCatching { tick() }
                 .onSuccess { prefs.lastError = "" }
                 .onFailure {
@@ -69,13 +73,14 @@ class AgentService : Service() {
                     prefs.lastError = "${it.javaClass.simpleName}: ${it.message}".take(200)
                 }
             sendBroadcast(Intent(Policy.ACTION_STATE_CHANGED).setPackage(packageName))
-            // Until the device is enrolled keep retrying quickly; afterwards use the server-set interval.
-            val waitMs = if (prefs.enrolled) prefs.intervalSec * 1000L else RETRY_MS
-            try {
-                Thread.sleep(waitMs)
-            } catch (_: InterruptedException) {
-                if (!running) return // service stopped; otherwise "retry now" was requested
+            // Not enrolled yet: retry quickly. Enrolled: normal interval; with the live channel up it is only a safety net.
+            val waitMs = when {
+                !prefs.enrolled -> RETRY_MS
+                PushClient.connected -> maxOf(prefs.intervalSec, 900) * 1000L
+                else -> prefs.intervalSec * 1000L
             }
+            // Sleeps until the interval ends or a ping / "retry now" arrives.
+            wakeSignal.tryAcquire(waitMs, java.util.concurrent.TimeUnit.MILLISECONDS)
         }
     }
 
@@ -141,6 +146,10 @@ class AgentService : Service() {
         prefs.pinHash = p.optString("pinHash", prefs.pinHash)
         prefs.disableDebugging = p.optBoolean("disableDebugging", true)
         prefs.intervalSec = p.optInt("intervalSec", 300)
+        val pushCfg = p.optJSONObject("push")
+        if (pushCfg != null && pushCfg.optString("channel").isNotEmpty()) {
+            push.configure(pushCfg.optString("url"), pushCfg.optString("key"), pushCfg.optString("channel"))
+        } else push.stop()
         val apps = p.optJSONArray("allowedApps")
         if (apps != null) {
             prefs.allowedApps = (0 until apps.length()).map {
@@ -210,7 +219,7 @@ class AgentService : Service() {
         /** Wakes the agent thread so it retries enrolment / check-in immediately. */
         fun retryNow(ctx: Context) {
             start(ctx)
-            instance?.worker?.interrupt()
+            instance?.wakeSignal?.release()
         }
 
         fun start(ctx: Context) {

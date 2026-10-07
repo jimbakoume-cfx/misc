@@ -6,7 +6,7 @@ import { createApp, type Seed } from "../netlify/functions/lib/app.ts";
 import { totp } from "../netlify/functions/lib/auth.ts";
 
 /** Runs the real function code against an in-memory Postgres (PGlite) and an in-memory blob store. */
-async function makeApp(opts: { seed?: Seed } = {}) {
+async function makeApp(opts: { seed?: Seed; env?: Record<string, string>; fetch?: typeof fetch } = {}) {
   const pg = new PGlite();
   const dir = new URL("../netlify/database/migrations/", import.meta.url);
   for (const m of readdirSync(dir).sort()) await pg.exec(readFileSync(new URL(`${m}/migration.sql`, dir), "utf8"));
@@ -14,7 +14,8 @@ async function makeApp(opts: { seed?: Seed } = {}) {
   const handler = createApp({
     db: { query: async (sql, params) => (await pg.query(sql, params as any[])).rows as any[] },
     blobs: { get: async (k) => blobs.get(k) ?? null, set: async (k, v) => { blobs.set(k, v); } },
-    env: { SESSION_SECRET: "test-secret", ADMIN_EMAIL: "Boss@Example.com", ADMIN_PASSWORD: "correct-horse-battery", PUBLIC_URL: "https://kiosk.example.com" },
+    env: { SESSION_SECRET: "test-secret", ADMIN_EMAIL: "Boss@Example.com", ADMIN_PASSWORD: "correct-horse-battery", PUBLIC_URL: "https://kiosk.example.com", ...(opts.env ?? {}) },
+    fetch: opts.fetch,
     loadSeed: opts.seed ? async () => opts.seed! : undefined,
   });
   const call = async (method: string, url: string, o: { body?: unknown; token?: string; raw?: Uint8Array; cookie?: string; headers?: Record<string, string> } = {}) => {
@@ -176,7 +177,7 @@ test("commands are delivered once and acked", async () => {
 test("release upload, provisioning QR payload, auto-update command", async () => {
   assert.equal((await call("GET", `/api/provisioning/${enrollToken}`, { token: admin })).status, 409);
   const apk = new Uint8Array(5000).fill(7);
-  const up = await call("PUT", "/api/releases?versionCode=2&versionName=1.2.1&certSha256=abcDEF_-123", { token: admin, raw: apk });
+  const up = await call("PUT", "/api/releases?versionCode=2&versionName=1.3.0&certSha256=abcDEF_-123", { token: admin, raw: apk });
   assert.equal(up.status, 200);
   const dl = await call("GET", "/apk/latest.apk");
   assert.equal(dl.status, 200);
@@ -249,7 +250,7 @@ test("bundled seed release is installed on first request and used for provisioni
   const s = await makeApp({ seed });
   const rels = await s.call("GET", "/api/releases", { token: s.admin });
   assert.equal(rels.body.length, 1);
-  assert.equal(rels.body[0].versionName, "1.2.1");
+  assert.equal(rels.body[0].versionName, "1.3.0");
   assert.equal(rels.body[0].certSha256, meta.certSha256);
   const dl = await s.call("GET", "/apk/latest.apk");
   assert.equal(dl.buf!.byteLength, buf.byteLength);
@@ -332,4 +333,63 @@ test("re-uploading the same APK corrects its label instead of adding a duplicate
   // a genuinely different file is still a new release
   await s.call("PUT", "/api/releases?versionCode=8&versionName=1.3.0", { token: s.admin, raw: new Uint8Array(6000).fill(8) });
   assert.equal((await s.call("GET", "/api/releases", { token: s.admin })).body.length, 2);
+});
+
+test("instant push: phones get a private channel and are pinged when something changes", async () => {
+  const sent: { url: string; headers: Record<string, string>; body: any }[] = [];
+  const fakeFetch = (async (url: string, init: any) => { sent.push({ url, headers: init.headers, body: JSON.parse(init.body) }); return new Response("", { status: 202 }); }) as unknown as typeof fetch;
+  const s = await makeApp({ env: { SUPABASE_URL: "https://proj.supabase.co/", SUPABASE_KEY: "sb_publishable_test" }, fetch: fakeFetch });
+  await s.call("PUT", "/api/settings", { token: s.admin, body: { requireApproval: false } });
+  sent.length = 0;
+  const tok = (await s.call("POST", "/api/enroll-tokens", { token: s.admin, body: { label: "P", maxUses: 5 } })).body.token;
+  const e = (await s.call("POST", "/api/device/enroll", { body: { enrollToken: tok, serial: "P1", androidId: "P1", model: "m", osVersion: "o" } })).body;
+  const hb = await s.call("POST", "/api/device/heartbeat", { token: e.deviceToken, body: { status: { deviceOwner: true } } });
+  const push = hb.body.policy.push;
+  assert.equal(push.url, "https://proj.supabase.co/");
+  assert.equal(push.key, "sb_publishable_test");
+  assert.match(push.channel, /^dev-[A-Za-z0-9_-]{20,}$/);
+  const hb2 = await s.call("POST", "/api/device/heartbeat", { token: e.deviceToken, body: { status: { deviceOwner: true } } });
+  assert.equal(hb2.body.policy.push.channel, push.channel); // stable per phone
+
+  // a dashboard command pings exactly that phone's channel, with no data in the message
+  await s.call("POST", `/api/devices/${e.id}/commands`, { token: s.admin, body: { type: "refresh" } });
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].url, "https://proj.supabase.co/realtime/v1/api/broadcast");
+  assert.equal(sent[0].headers.apikey, "sb_publishable_test");
+  assert.deepEqual(sent[0].body.messages, [{ topic: push.channel, event: "wake", payload: {}, private: false }]);
+
+  // editing the group or a setting pings the affected phones
+  sent.length = 0;
+  const g = (await s.call("POST", "/api/groups", { token: s.admin, body: { name: "PG" } })).body.id;
+  await s.call("PATCH", `/api/devices/${e.id}`, { token: s.admin, body: { groupId: g } });
+  assert.equal(sent.length, 1);
+  await s.call("PATCH", `/api/groups/${g}`, { token: s.admin, body: { message: "hello" } });
+  assert.equal(sent.length, 2);
+  await s.call("PUT", "/api/settings", { token: s.admin, body: { autoUpdate: false } });
+  assert.equal(sent.length, 3);
+  assert.equal((await s.call("GET", "/api/overview", { token: s.admin })).body.push, true);
+});
+
+test("instant push is optional: no config means no channel, and a failing Supabase never breaks the dashboard", async () => {
+  const off = await makeApp();
+  await off.call("PUT", "/api/settings", { token: off.admin, body: { requireApproval: false } });
+  const tok = (await off.call("POST", "/api/enroll-tokens", { token: off.admin, body: { label: "N" } })).body.token;
+  const e = (await off.call("POST", "/api/device/enroll", { body: { enrollToken: tok, serial: "N1", androidId: "N1", model: "m", osVersion: "o" } })).body;
+  const hb = await off.call("POST", "/api/device/heartbeat", { token: e.deviceToken, body: { status: { deviceOwner: true } } });
+  assert.equal(hb.body.policy.push, null);
+
+  const broken = (async () => { throw new Error("network down"); }) as unknown as typeof fetch;
+  const on = await makeApp({ env: { SUPABASE_URL: "https://x.supabase.co", SUPABASE_KEY: "k" }, fetch: broken });
+  await on.call("PUT", "/api/settings", { token: on.admin, body: { requireApproval: false } });
+  const t2 = (await on.call("POST", "/api/enroll-tokens", { token: on.admin, body: { label: "B" } })).body.token;
+  const e2 = (await on.call("POST", "/api/device/enroll", { body: { enrollToken: t2, serial: "B1", androidId: "B1", model: "m", osVersion: "o" } })).body;
+  await on.call("POST", "/api/device/heartbeat", { token: e2.deviceToken, body: { status: { deviceOwner: true } } });
+  assert.equal((await on.call("POST", `/api/devices/${e2.id}/commands`, { token: on.admin, body: { type: "refresh" } })).status, 200);
+});
+
+test("a stale dashboard tab gets a clear instruction instead of a cryptic error", async () => {
+  const s = await makeApp();
+  const r = await s.call("POST", "/api/groups", { cookie: s.admin, body: { name: "Stale" } });
+  assert.equal(r.status, 403);
+  assert.match(r.body.error, /out of date\. Reload/);
 });

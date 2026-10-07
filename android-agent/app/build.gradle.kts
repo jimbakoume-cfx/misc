@@ -18,8 +18,8 @@ android {
         applicationId = "com.cofilo.kiosk"
         minSdk = 26
         targetSdk = 34
-        versionCode = 7
-        versionName = "1.2.1"
+        versionCode = 8
+        versionName = "1.3.0"
     }
 
     signingConfigs {
@@ -49,4 +49,9 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+}
+
+dependencies {
+    // WebSocket client for the instant "wake up" channel (Supabase Realtime).
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }
