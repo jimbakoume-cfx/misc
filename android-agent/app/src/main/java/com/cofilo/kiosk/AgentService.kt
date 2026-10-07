@@ -20,6 +20,7 @@ import kotlin.concurrent.thread
  */
 class AgentService : Service() {
     @Volatile private var running = false
+    private var worker: Thread? = null
     private val pendingAcks = JSONArray()
     private var lastPolicyVersion = -1
 
@@ -29,13 +30,16 @@ class AgentService : Service() {
         startForegroundCompat()
         if (!running) {
             running = true
-            thread(name = "kiosk-agent", isDaemon = true) { loop() }
+            worker = thread(name = "kiosk-agent", isDaemon = true) { loop() }
+            instance = this
         }
         return START_STICKY
     }
 
     override fun onDestroy() {
         running = false
+        worker?.interrupt()
+        if (instance === this) instance = null
         super.onDestroy()
     }
 
@@ -57,11 +61,20 @@ class AgentService : Service() {
         // Re-apply the lockdown at every service start (boot, update, crash recovery).
         runCatching { Policy.apply(this) }
         while (running) {
-            runCatching { tick() }.onFailure { Log.w(TAG, "tick failed: ${it.message}") }
+            val prefs = Prefs(this)
+            runCatching { tick() }
+                .onSuccess { prefs.lastError = "" }
+                .onFailure {
+                    Log.w(TAG, "tick failed: ${it.message}")
+                    prefs.lastError = "${it.javaClass.simpleName}: ${it.message}".take(200)
+                }
+            sendBroadcast(Intent(Policy.ACTION_STATE_CHANGED).setPackage(packageName))
+            // Until the device is enrolled keep retrying quickly; afterwards use the server-set interval.
+            val waitMs = if (prefs.enrolled) prefs.intervalSec * 1000L else RETRY_MS
             try {
-                Thread.sleep(Prefs(this).intervalSec * 1000L)
+                Thread.sleep(waitMs)
             } catch (_: InterruptedException) {
-                return
+                if (!running) return // service stopped; otherwise "retry now" was requested
             }
         }
     }
@@ -181,6 +194,14 @@ class AgentService : Service() {
     companion object {
         private const val TAG = "KioskAgent"
         private const val CHANNEL = "agent"
+        private const val RETRY_MS = 15_000L
+        @Volatile private var instance: AgentService? = null
+
+        /** Wakes the agent thread so it retries enrolment / check-in immediately. */
+        fun retryNow(ctx: Context) {
+            start(ctx)
+            instance?.worker?.interrupt()
+        }
 
         fun start(ctx: Context) {
             ctx.startForegroundService(Intent(ctx, AgentService::class.java))

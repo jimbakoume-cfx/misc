@@ -46,6 +46,11 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("disableDebugging", true)
         set(v) = sp.edit().putBoolean("disableDebugging", v).apply()
 
+    /** Last enrolment/check-in problem, shown on screen to help diagnose connection issues. */
+    var lastError: String
+        get() = sp.getString("lastError", "") ?: ""
+        set(v) = sp.edit().putString("lastError", v).apply()
+
     /** Seconds between check-ins; the server can change it through the policy. */
     var intervalSec: Int
         get() = sp.getInt("intervalSec", 300)

@@ -201,6 +201,26 @@ class MainActivity : Activity() {
             textSize = 15f
         }
         box.addView(hintView)
+        if (p.hasEnrollConfig) {
+            box.addView(TextView(this).apply {
+                text = "Server: ${p.serverUrl}"
+                setTextColor(Color.parseColor("#475569"))
+                textSize = 13f
+                setPadding(0, dp(8), 0, 0)
+            })
+            if (p.lastError.isNotEmpty()) {
+                box.addView(TextView(this).apply {
+                    text = "Problem: ${p.lastError}"
+                    setTextColor(Color.parseColor("#B91C1C"))
+                    textSize = 13f
+                    setPadding(0, dp(6), 0, dp(6))
+                })
+            }
+            box.addView(Button(this).apply {
+                text = "Retry now"
+                setOnClickListener { AgentService.retryNow(this@MainActivity) }
+            })
+        }
         if (!p.hasEnrollConfig) {
             val url = EditText(this).apply {
                 hint = "https://dashboard.example.com"
