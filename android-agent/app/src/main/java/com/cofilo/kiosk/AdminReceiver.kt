@@ -10,7 +10,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.os.Bundle
+import android.os.PersistableBundle
 
 class AdminReceiver : DeviceAdminReceiver() {
     /**
@@ -18,9 +18,7 @@ class AdminReceiver : DeviceAdminReceiver() {
      * services or screens at this point, so just remember the details and let a scheduled job do the rest.
      */
     override fun onProfileProvisioningComplete(context: Context, intent: Intent) {
-        @Suppress("DEPRECATION")
-        val extras = intent.getParcelableExtra<Bundle>(android.app.admin.DevicePolicyManager.EXTRA_PROVISIONING_ADMIN_EXTRAS_BUNDLE)
-        Provision.consume(context, extras)
+        Provision.consume(context, Provision.extras(intent))
         Provision.schedulePostSetup(context)
     }
 }
@@ -39,7 +37,12 @@ class PostSetupJobService : JobService() {
 object Provision {
     const val DEFAULT_SERVER = "https://confiance-kiosk.netlify.app"
 
-    fun consume(ctx: Context, extras: Bundle?) {
+    /** The QR code's admin extras. Android delivers them as a PersistableBundle (not a Bundle). */
+    @Suppress("DEPRECATION")
+    fun extras(intent: Intent): PersistableBundle? =
+        runCatching { intent.getParcelableExtra<PersistableBundle>(DevicePolicyManager.EXTRA_PROVISIONING_ADMIN_EXTRAS_BUNDLE) }.getOrNull()
+
+    fun consume(ctx: Context, extras: PersistableBundle?) {
         val p = Prefs(ctx)
         extras?.getString("enroll_token")?.takeIf { it.isNotBlank() }?.let { p.enrollToken = it }
         extras?.getString("server_url")?.takeIf { it.isNotBlank() }?.let { p.serverUrl = it }

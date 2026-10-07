@@ -18,7 +18,7 @@ and **Netlify Blobs** (APK files). Live site: https://confiance-kiosk.netlify.ap
 3. **Groups & apps**: create groups and tick the apps agents may open.
 4. **Add devices**: create a code and scan its QR on each factory-reset phone (see PROVISIONING.md).
 
-The first APK (`releases/kiosk-agent-1.3.3.apk`) is bundled with the deploy and installed as release #1 on first use.
+The first APK (`releases/kiosk-agent-1.3.4.apk`) is bundled with the deploy and installed as release #1 on first use.
 Upload later versions on the **App versions** page; phones update themselves.
 
 ## Deploying changes

@@ -34,7 +34,7 @@ class ProvisioningModeActivity : Activity() {
 class PolicyComplianceActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Provision.consume(this, intent.getBundleExtra(DevicePolicyManager.EXTRA_PROVISIONING_ADMIN_EXTRAS_BUNDLE))
+        Provision.consume(this, Provision.extras(intent))
         Provision.prepareHome(this)
         Provision.schedulePostSetup(this)
         Beacon.send(this, "policy-compliance", "sdk=${android.os.Build.VERSION.SDK_INT}", waitMs = 1500)
