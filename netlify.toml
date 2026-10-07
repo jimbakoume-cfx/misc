@@ -49,3 +49,11 @@
   [headers.values]
     Content-Type = "application/vnd.android.package-archive"
     Cache-Control = "no-cache"
+
+# USB setup scripts, downloadable from the site.
+[[headers]]
+  for = "/setup/*"
+  [headers.values]
+    Content-Type = "text/plain; charset=utf-8"
+    Content-Disposition = "attachment"
+    Cache-Control = "no-cache"
