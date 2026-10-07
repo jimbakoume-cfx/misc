@@ -78,8 +78,19 @@ test("group + enrollment token + device enrolls", async () => {
   assert.equal(again.body.id, deviceId);
   assert.notEqual(again.body.deviceToken, deviceToken);
   deviceToken = again.body.deviceToken;
+  // hand-typed variants of the same code are accepted (case, spaces, dash, look-alike letters)
+  assert.match(enrollToken, /^[2-9A-HJKMNP-Z]{10}$/);
+  const typed = `${enrollToken.slice(0, 5)}-${enrollToken.slice(5)}`.toLowerCase().replace(/(\d)/g, "$1");
+  assert.equal(typed.replace(/[^a-z0-9]/g, "").toUpperCase(), enrollToken);
   // token exhausted (max 2 uses)
   assert.equal((await call("POST", "/api/device/enroll", { body: { enrollToken, serial: "SN2" } })).status, 403);
+  const t2 = (await call("POST", "/api/enroll-tokens", { token: admin, body: { label: "Typed", maxUses: 5 } })).body;
+  assert.match(t2.code, /^[2-9A-HJKMNP-Z]{5}-[2-9A-HJKMNP-Z]{5}$/);
+  const lower = ` ${t2.code.toLowerCase()} `;
+  const e2 = await call("POST", "/api/device/enroll", { body: { enrollToken: lower, serial: "SN-T", androidId: "AT", model: "T", osVersion: "A" } });
+  assert.equal(e2.status, 200);
+  assert.equal((await call("GET", "/api/enroll-tokens", { token: admin })).body.find((t: any) => t.token === t2.token).code, t2.code);
+  await call("DELETE", `/api/devices/${e2.body.id}`, { token: admin });
 });
 
 test("heartbeat returns group policy with sanitised apps, PIN hash and interval", async () => {
@@ -134,7 +145,7 @@ test("commands are delivered once and acked", async () => {
 test("release upload, provisioning QR payload, auto-update command", async () => {
   assert.equal((await call("GET", `/api/provisioning/${enrollToken}`, { token: admin })).status, 409);
   const apk = new Uint8Array(5000).fill(7);
-  const up = await call("PUT", "/api/releases?versionCode=2&versionName=1.1.2&certSha256=abcDEF_-123", { token: admin, raw: apk });
+  const up = await call("PUT", "/api/releases?versionCode=2&versionName=1.1.3&certSha256=abcDEF_-123", { token: admin, raw: apk });
   assert.equal(up.status, 200);
   const dl = await call("GET", "/apk/latest.apk");
   assert.equal(dl.status, 200);
@@ -188,7 +199,7 @@ test("bundled seed release is installed on first request and used for provisioni
   const s = await makeApp({ seed });
   const rels = await s.call("GET", "/api/releases", { token: s.admin });
   assert.equal(rels.body.length, 1);
-  assert.equal(rels.body[0].versionName, "1.1.2");
+  assert.equal(rels.body[0].versionName, "1.1.3");
   assert.equal(rels.body[0].certSha256, meta.certSha256);
   const dl = await s.call("GET", "/apk/latest.apk");
   assert.equal(dl.buf!.byteLength, buf.byteLength);

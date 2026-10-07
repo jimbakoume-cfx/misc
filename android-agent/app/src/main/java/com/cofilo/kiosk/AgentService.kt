@@ -90,7 +90,16 @@ class AgentService : Service() {
 
     private fun enroll(prefs: Prefs) {
         val body = DeviceInfo.identity(this).put("enrollToken", prefs.enrollToken)
-        val res = Api.post(prefs.serverUrl, "/api/device/enroll", body)
+        val res = try {
+            Api.post(prefs.serverUrl, "/api/device/enroll", body)
+        } catch (e: Api.ApiException) {
+            if (e.code == 403) {
+                // The code was rejected: forget it so the entry form comes back and it can be retyped.
+                prefs.enrollToken = ""
+                throw Api.ApiException(403, "Code not accepted (${e.message}). Check it and try again.")
+            }
+            throw e
+        }
         prefs.deviceToken = res.getString("deviceToken")
         prefs.deviceName = res.optString("name", "")
         Log.i(TAG, "enrolled as ${prefs.deviceName}")

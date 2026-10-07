@@ -23,7 +23,10 @@ object Api {
             val code = conn.responseCode
             val text = (if (code in 200..299) conn.inputStream else conn.errorStream)
                 ?.bufferedReader()?.use { it.readText() } ?: ""
-            if (code !in 200..299) throw ApiException(code, text.ifEmpty { "HTTP $code" })
+            if (code !in 200..299) {
+                val msg = runCatching { JSONObject(text).optString("error", "") }.getOrDefault("")
+                throw ApiException(code, msg.ifEmpty { text.take(120).ifEmpty { "HTTP $code" } })
+            }
             return if (text.isBlank()) JSONObject() else JSONObject(text)
         } finally {
             conn.disconnect()

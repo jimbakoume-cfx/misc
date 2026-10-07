@@ -196,26 +196,28 @@ class MainActivity : Activity() {
         }
         val hintView = TextView(this).apply {
             text = if (p.hasEnrollConfig) "Connecting to the management server…"
-            else "This device is not enrolled yet. Enter the server address and enrollment code from the dashboard."
+            else "This device is not enrolled yet. Enter the server address and the enrollment code from the dashboard (Add devices → Code)."
             setTextColor(Color.parseColor("#475569"))
             textSize = 15f
         }
         box.addView(hintView)
-        if (p.hasEnrollConfig) {
+        if (p.serverUrl.isNotEmpty()) {
             box.addView(TextView(this).apply {
                 text = "Server: ${p.serverUrl}"
                 setTextColor(Color.parseColor("#475569"))
                 textSize = 13f
                 setPadding(0, dp(8), 0, 0)
             })
-            if (p.lastError.isNotEmpty()) {
-                box.addView(TextView(this).apply {
-                    text = "Problem: ${p.lastError}"
-                    setTextColor(Color.parseColor("#B91C1C"))
-                    textSize = 13f
-                    setPadding(0, dp(6), 0, dp(6))
-                })
-            }
+        }
+        if (p.lastError.isNotEmpty()) {
+            box.addView(TextView(this).apply {
+                text = "Problem: ${p.lastError}"
+                setTextColor(Color.parseColor("#B91C1C"))
+                textSize = 13f
+                setPadding(0, dp(6), 0, dp(6))
+            })
+        }
+        if (p.hasEnrollConfig) {
             box.addView(Button(this).apply {
                 text = "Retry now"
                 setOnClickListener { AgentService.retryNow(this@MainActivity) }
@@ -225,12 +227,15 @@ class MainActivity : Activity() {
             val url = EditText(this).apply {
                 hint = "https://dashboard.example.com"
                 setHintTextColor(Color.GRAY); setTextColor(Color.parseColor("#081A51"))
-                inputType = InputType.TYPE_TEXT_VARIATION_URI
-                setText(p.serverUrl)
+                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+                setText(p.serverUrl.ifEmpty { "https://confiance-kiosk.netlify.app" })
             }
             val token = EditText(this).apply {
-                hint = "Enrollment code"
+                hint = "Enrollment code (e.g. ABCDE-FGHJK)"
                 setHintTextColor(Color.GRAY); setTextColor(Color.parseColor("#081A51"))
+                // No autocorrect / suggestions / auto-case: the code must reach the server exactly as typed.
+                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or
+                    InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
             }
             val btn = Button(this).apply {
                 text = "Enroll"

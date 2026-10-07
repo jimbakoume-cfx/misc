@@ -1,5 +1,5 @@
 import QRCode from "qrcode";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import type { BlobStore, Db } from "./db.ts";
 import { toPg } from "./db.ts";
 import {
@@ -41,6 +41,11 @@ class HttpError extends Error {
 const json = (s: string | null | undefined, fallback: any) => {
   try { return s ? JSON.parse(s) : fallback; } catch { return fallback; }
 };
+// Enrolment codes are typed by hand on phones, so avoid look-alike characters (0/O, 1/I/L) and ignore case, spaces and dashes.
+const CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+const randomCode = () => Array.from(randomBytes(10), (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
+const normCode = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/O/g, "0").replace(/[IL]/g, "1");
+const showCode = (t: string) => (/^[2-9A-HJKMNP-Z]{10}$/.test(t) ? `${t.slice(0, 5)}-${t.slice(5)}` : t);
 const sha256Buf = (b: ArrayBuffer) => createHash("sha256").update(Buffer.from(b)).digest("hex");
 
 interface Ctx {
@@ -208,7 +213,10 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
   // ---------- device API ----------
   add("POST", "/api/device/enroll", "none", async (c) => {
     const b = c.body;
-    const tok = await get("SELECT * FROM enroll_tokens WHERE token=?", String(b.enrollToken ?? ""));
+    const raw = String(b.enrollToken ?? "").trim();
+    // Exact match first (QR codes and older long codes), then the forgiving form used for hand-typed codes.
+    const tok = (await get("SELECT * FROM enroll_tokens WHERE token=?", raw))
+      ?? (await get("SELECT * FROM enroll_tokens WHERE token=?", normCode(raw)));
     if (!tok || tok.expires_at < now() || tok.uses >= tok.max_uses) throw new HttpError(403, "Invalid or expired enrollment code");
     const deviceToken = randomToken(32);
     const existing = b.serial || b.androidId
@@ -389,17 +397,17 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
   // enrollment tokens + QR
   add("GET", "/api/enroll-tokens", "read", async () =>
     (await all("SELECT t.*, g.name AS group_name FROM enroll_tokens t LEFT JOIN device_groups g ON g.id=t.group_id ORDER BY created_at DESC"))
-      .map((t) => ({ token: t.token, label: t.label, groupId: t.group_id, groupName: t.group_name,
+      .map((t) => ({ token: t.token, code: showCode(t.token), label: t.label, groupId: t.group_id, groupName: t.group_name,
         expiresAt: t.expires_at, maxUses: t.max_uses, uses: t.uses, createdAt: t.created_at })));
   add("POST", "/api/enroll-tokens", "write", async (c) => {
     const b = c.body;
-    const token = randomToken(12);
+    const token = randomCode();
     const days = Math.min(Math.max(Number(b.days) || 30, 1), 365);
     await run("INSERT INTO enroll_tokens(token,label,group_id,expires_at,max_uses,created_at) VALUES(?,?,?,?,?,?)",
       token, String(b.label ?? "").trim().slice(0, 30) || "Device", b.groupId ?? null, now() + days * 86_400_000,
       Math.min(Math.max(Number(b.maxUses) || 200, 1), 5000), now());
     await audit(who(c), "create-enroll-token", b.label ?? "");
-    return { token };
+    return { token, code: showCode(token) };
   });
   add("DELETE", "/api/enroll-tokens/:token", "write", async (c) => {
     await run("DELETE FROM enroll_tokens WHERE token=?", c.params.token);

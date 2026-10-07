@@ -301,9 +301,9 @@ async function provision() {
         <p><button class="btn" id="tCreate">Create code &amp; QR</button></p></div>` : ""}
     </div>
     <h3>Existing codes</h3>
-    <div class="table-wrap"><table><thead><tr><th>Label</th><th>Group</th><th>Used</th><th>Expires</th><th></th></tr></thead><tbody>
-      ${tokens.map((t) => `<tr><td>${esc(t.label)}</td><td>${esc(t.groupName ?? "—")}</td><td>${t.uses}/${t.maxUses}</td><td>${when(t.expiresAt)}${t.expiresAt < Date.now() ? ' <span class="tag bad">expired</span>' : ""}</td>
-        <td><button class="btn ghost" data-qr="${esc(t.token)}">Show QR</button> ${canWrite() ? `<button class="btn ghost" data-rm="${esc(t.token)}">Delete</button>` : ""}</td></tr>`).join("") || '<tr><td colspan="5" class="muted">No codes yet.</td></tr>'}
+    <div class="table-wrap"><table><thead><tr><th>Label</th><th>Code (for typing on a phone)</th><th>Group</th><th>Used</th><th>Expires</th><th></th></tr></thead><tbody>
+      ${tokens.map((t) => `<tr><td>${esc(t.label)}</td><td><code style="font-size:15px;letter-spacing:.04em">${esc(t.code)}</code> <button class="btn ghost" data-copy="${esc(t.code)}">Copy</button></td><td>${esc(t.groupName ?? "—")}</td><td>${t.uses}/${t.maxUses}</td><td>${when(t.expiresAt)}${t.expiresAt < Date.now() ? ' <span class="tag bad">expired</span>' : ""}</td>
+        <td><button class="btn ghost" data-qr="${esc(t.token)}">Show QR</button> ${canWrite() ? `<button class="btn ghost" data-rm="${esc(t.token)}">Delete</button>` : ""}</td></tr>`).join("") || '<tr><td colspan="6" class="muted">No codes yet.</td></tr>'}
     </tbody></table></div>`;
   const showQr = async (token) => {
     try {
@@ -315,6 +315,7 @@ async function provision() {
   $("#tCreate")?.addEventListener("click", async () => {
     try { const r = await api("POST", "/api/enroll-tokens", { label: $("#tLabel").value, groupId: $("#tGroup").value ? +$("#tGroup").value : null, days: +$("#tDays").value, maxUses: +$("#tMax").value }); await provision(); showQr(r.token); } catch (e) { fail(e); }
   });
+  document.querySelectorAll("[data-copy]").forEach((b) => b.onclick = async () => { try { await navigator.clipboard.writeText(b.dataset.copy); toast("Code copied"); } catch { toast(b.dataset.copy); } });
   document.querySelectorAll("[data-qr]").forEach((b) => b.onclick = () => showQr(b.dataset.qr));
   document.querySelectorAll("[data-rm]").forEach((b) => b.onclick = async () => { if (confirm("Delete this code?")) { await api("DELETE", `/api/enroll-tokens/${encodeURIComponent(b.dataset.rm)}`); provision(); } });
 }

@@ -4,7 +4,7 @@
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
-  included_files = ["releases/seed.json", "releases/kiosk-agent-1.1.2.apk"]
+  included_files = ["releases/seed.json", "releases/kiosk-agent-1.1.3.apk"]
 
 [[headers]]
   for = "/*"
