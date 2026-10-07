@@ -17,7 +17,7 @@ safe-mode, factory reset, USB debugging and installing/removing apps are blocked
 
 ## Signing-certificate checksum
 The QR contains the SHA-256 of the app's signing certificate so Android can verify the download.
-For the supplied build it is in `releases/kiosk-agent-1.3.1.txt`. For your own build:
+For the supplied build it is in `releases/kiosk-agent-1.3.2.txt`. For your own build:
 ```bash
 keytool -list -v -keystore kiosk-release.keystore -alias kiosk | grep SHA256
 # convert the hex to base64url (no padding):
@@ -25,10 +25,13 @@ python3 -c "import base64,binascii,sys;print(base64.urlsafe_b64encode(binascii.u
 ```
 **Always sign updates with the same keystore**, otherwise devices will refuse the update. Keep the keystore and its password safe and backed up.
 
-## Alternative for a few devices (USB)
+## If the QR setup fails: USB setup
+See `USB_SETUP.md` (a script that sets up phones plugged into a PC; works even when Google blocks QR setup).
+
+## Alternative for a few devices (USB, manual)
 On a freshly reset phone with **no Google account added** and USB debugging on:
 ```bash
-adb install kiosk-agent-1.3.1.apk
+adb install kiosk-agent-1.3.2.apk
 adb shell dpm set-device-owner com.cofilo.kiosk/.AdminReceiver
 ```
 Then enter the server address and enrolment code on the phone's screen.
