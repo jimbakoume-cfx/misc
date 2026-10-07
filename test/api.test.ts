@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { createApp, type Seed } from "../netlify/functions/lib/app.ts";
+import { totp } from "../netlify/functions/lib/auth.ts";
 
 /** Runs the real function code against an in-memory Postgres (PGlite) and an in-memory blob store. */
 async function makeApp(opts: { seed?: Seed } = {}) {
@@ -16,11 +17,13 @@ async function makeApp(opts: { seed?: Seed } = {}) {
     env: { SESSION_SECRET: "test-secret", ADMIN_EMAIL: "Boss@Example.com", ADMIN_PASSWORD: "correct-horse-battery", PUBLIC_URL: "https://kiosk.example.com" },
     loadSeed: opts.seed ? async () => opts.seed! : undefined,
   });
-  const call = async (method: string, url: string, o: { body?: unknown; token?: string; raw?: Uint8Array } = {}) => {
+  const call = async (method: string, url: string, o: { body?: unknown; token?: string; raw?: Uint8Array; cookie?: string; headers?: Record<string, string> } = {}) => {
     const res = await handler(new Request(`https://kiosk.example.com${url}`, {
       method,
       headers: {
         ...(o.token ? { authorization: `Bearer ${o.token}` } : {}),
+        ...(o.cookie ? { cookie: `kiosk_session=${o.cookie}` } : {}),
+        ...(o.headers ?? {}),
         ...(o.raw ? { "content-type": "application/octet-stream" } : o.body ? { "content-type": "application/json" } : {}),
       },
       body: (o.raw ?? (o.body ? JSON.stringify(o.body) : undefined)) as any,
@@ -47,9 +50,14 @@ test("first admin comes from env (email lower-cased); wrong password and anonymo
 });
 
 test("login locks out after repeated failures", async () => {
-  for (let i = 0; i < 8; i++) await call("POST", "/api/login", { body: { email: "victim@example.com", password: "x" } });
-  const r = await call("POST", "/api/login", { body: { email: "victim@example.com", password: "x" } });
+  const from = { "x-nf-client-connection-ip": "198.51.100.7" };
+  for (let i = 0; i < 8; i++) await call("POST", "/api/login", { body: { email: "victim@example.com", password: "x" }, headers: from });
+  const r = await call("POST", "/api/login", { body: { email: "victim@example.com", password: "x" }, headers: from });
   assert.equal(r.status, 429);
+  // a different address is not affected, and neither is that address once it signs in elsewhere
+  assert.equal((await call("POST", "/api/login", { body: { email: "boss@example.com", password: "correct-horse-battery" } })).status, 200);
+  // the locked address cannot sign in even with the right password
+  assert.equal((await call("POST", "/api/login", { body: { email: "boss@example.com", password: "correct-horse-battery" }, headers: from })).status, 429);
 });
 
 let enrollToken = "";
@@ -72,7 +80,15 @@ test("group + enrollment token + device enrolls", async () => {
   deviceToken = e.body.deviceToken;
   deviceId = e.body.id;
 
-  // factory reset + re-enroll keeps the same device record
+  // a new phone is locked down but has no apps until an administrator approves it
+  const pending = await call("POST", "/api/device/heartbeat", { token: deviceToken, body: { status: {} } });
+  assert.deepEqual(pending.body.policy.allowedApps, []);
+  assert.equal(pending.body.policy.message, "Waiting for administrator approval");
+  assert.equal((await call("GET", "/api/overview", { token: admin })).body.pendingApproval, 1);
+  assert.equal((await call("POST", `/api/devices/${deviceId}/approve`, { token: admin })).status, 200);
+  assert.equal((await call("GET", "/api/overview", { token: admin })).body.pendingApproval, 0);
+
+  // factory reset + re-enroll keeps the same device record (and its approval)
   const again = await call("POST", "/api/device/enroll", { body: { enrollToken, serial: "SN1", androidId: "A1", model: "Pixel", osVersion: "Android 14" } });
   assert.equal(again.body.id, deviceId);
   assert.notEqual(again.body.deviceToken, deviceToken);
@@ -88,6 +104,7 @@ test("group + enrollment token + device enrolls", async () => {
   const lower = ` ${t2.code.toLowerCase()} `;
   const e2 = await call("POST", "/api/device/enroll", { body: { enrollToken: lower, serial: "SN-T", androidId: "AT", model: "T", osVersion: "A" } });
   assert.equal(e2.status, 200);
+  assert.equal((await call("POST", "/api/devices/approve-all", { token: admin })).body.approved, 1);
   assert.equal((await call("GET", "/api/enroll-tokens", { token: admin })).body.find((t: any) => t.token === t2.token).code, t2.code);
   await call("DELETE", `/api/devices/${e2.body.id}`, { token: admin });
 });
@@ -136,11 +153,21 @@ test("policy version changes when admin edits; device override wins over group",
 test("commands are delivered once and acked", async () => {
   assert.equal((await call("POST", `/api/devices/${deviceId}/commands`, { token: admin, body: { type: "nonsense" } })).status, 400);
   assert.equal((await call("POST", "/api/devices/9999/commands", { token: admin, body: { type: "reboot" } })).status, 404);
+  // an unmanaged phone (app installed by hand, not the device owner) cannot be sent commands that need ownership
+  await call("POST", "/api/device/heartbeat", { token: deviceToken, body: { status: { deviceOwner: false } } });
+  const refused = await call("POST", `/api/devices/${deviceId}/commands`, { token: admin, body: { type: "release" } });
+  assert.equal(refused.status, 409);
+  assert.match(refused.body.error, /not managed/);
+  assert.equal((await call("POST", `/api/devices/${deviceId}/commands`, { token: admin, body: { type: "refresh" } })).status, 200);
+  const bulk = await call("POST", "/api/commands/bulk", { token: admin, body: { ids: [deviceId], type: "reboot" } });
+  assert.deepEqual([bulk.body.queued, bulk.body.skipped], [0, 1]);
+  await call("POST", "/api/device/heartbeat", { token: deviceToken, body: { status: {} } }); // flush the refresh
+  await call("POST", "/api/device/heartbeat", { token: deviceToken, body: { status: { deviceOwner: true } } });
   await call("POST", `/api/devices/${deviceId}/commands`, { token: admin, body: { type: "release" } });
-  const hb = await call("POST", "/api/device/heartbeat", { token: deviceToken, body: { status: {} } });
+  const hb = await call("POST", "/api/device/heartbeat", { token: deviceToken, body: { status: { deviceOwner: true } } });
   assert.equal(hb.body.commands.length, 1);
   assert.equal(hb.body.commands[0].type, "release");
-  const hb2 = await call("POST", "/api/device/heartbeat", { token: deviceToken, body: { status: {}, acks: [{ id: hb.body.commands[0].id, status: "done" }] } });
+  const hb2 = await call("POST", "/api/device/heartbeat", { token: deviceToken, body: { status: { deviceOwner: true }, acks: [{ id: hb.body.commands[0].id, status: "done" }] } });
   assert.equal(hb2.body.commands.length, 0);
   const detail = await call("GET", `/api/devices/${deviceId}`, { token: admin });
   assert.equal(detail.body.commands[0].status, "done");
@@ -149,7 +176,7 @@ test("commands are delivered once and acked", async () => {
 test("release upload, provisioning QR payload, auto-update command", async () => {
   assert.equal((await call("GET", `/api/provisioning/${enrollToken}`, { token: admin })).status, 409);
   const apk = new Uint8Array(5000).fill(7);
-  const up = await call("PUT", "/api/releases?versionCode=2&versionName=1.2.0&certSha256=abcDEF_-123", { token: admin, raw: apk });
+  const up = await call("PUT", "/api/releases?versionCode=2&versionName=1.2.1&certSha256=abcDEF_-123", { token: admin, raw: apk });
   assert.equal(up.status, 200);
   const dl = await call("GET", "/apk/latest.apk");
   assert.equal(dl.status, 200);
@@ -179,8 +206,8 @@ test("release upload, provisioning QR payload, auto-update command", async () =>
 });
 
 test("viewer accounts are read-only", async () => {
-  await call("POST", "/api/admins", { token: admin, body: { email: "view@example.com", password: "longenough1", role: "viewer" } });
-  const v = (await call("POST", "/api/login", { body: { email: "view@example.com", password: "longenough1" } })).body.token;
+  await call("POST", "/api/admins", { token: admin, body: { email: "view@example.com", password: "longenough-12!", role: "viewer" } });
+  const v = (await call("POST", "/api/login", { body: { email: "view@example.com", password: "longenough-12!" } })).body.token;
   assert.equal((await call("GET", "/api/devices", { token: v })).status, 200);
   assert.equal((await call("POST", "/api/groups", { token: v, body: { name: "x" } })).status, 403);
 });
@@ -222,11 +249,72 @@ test("bundled seed release is installed on first request and used for provisioni
   const s = await makeApp({ seed });
   const rels = await s.call("GET", "/api/releases", { token: s.admin });
   assert.equal(rels.body.length, 1);
-  assert.equal(rels.body[0].versionName, "1.2.0");
+  assert.equal(rels.body[0].versionName, "1.2.1");
   assert.equal(rels.body[0].certSha256, meta.certSha256);
   const dl = await s.call("GET", "/apk/latest.apk");
   assert.equal(dl.buf!.byteLength, buf.byteLength);
   const t = (await s.call("POST", "/api/enroll-tokens", { token: s.admin, body: { label: "X" } })).body.token;
   const prov = await s.call("GET", `/api/provisioning/${t}`, { token: s.admin });
   assert.equal(prov.body.payload["android.app.extra.PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM"], meta.certSha256);
+});
+
+test("changing the password signs out other sessions and enforces the length rule", async () => {
+  const s = await makeApp();
+  const other = (await s.call("POST", "/api/login", { body: { email: "boss@example.com", password: "correct-horse-battery" } })).body.token;
+  assert.equal((await s.call("POST", "/api/me/password", { token: s.admin, body: { current: "wrong", next: "a-new-long-password" } })).status, 403);
+  assert.equal((await s.call("POST", "/api/me/password", { token: s.admin, body: { current: "correct-horse-battery", next: "short" } })).status, 400);
+  const ok = await s.call("POST", "/api/me/password", { token: s.admin, body: { current: "correct-horse-battery", next: "a-new-long-password" } });
+  assert.equal(ok.status, 200);
+  assert.equal((await s.call("GET", "/api/devices", { token: other })).status, 401);            // old session revoked
+  assert.equal((await s.call("POST", "/api/login", { body: { email: "boss@example.com", password: "correct-horse-battery" } })).status, 401);
+  assert.equal((await s.call("POST", "/api/login", { body: { email: "boss@example.com", password: "a-new-long-password" } })).status, 200);
+  assert.equal((await s.call("POST", "/api/admins", { token: s.admin, body: { email: "x@example.com", password: "elevenchars" } })).status, 401); // old token no longer valid
+});
+
+test("two-factor sign-in: setup, enforced at login, recovery codes work once, can be required for everyone", async () => {
+  const s = await makeApp();
+  const setup = await s.call("POST", "/api/me/2fa/setup", { token: s.admin });
+  assert.match(setup.body.secret, /^[A-Z2-7]{32}$/);
+  assert.match(setup.body.qr, /^data:image\/png;base64,/);
+  assert.equal((await s.call("POST", "/api/me/2fa/enable", { token: s.admin, body: { code: "000000" } })).status, 400);
+  const enable = await s.call("POST", "/api/me/2fa/enable", { token: s.admin, body: { code: totp(setup.body.secret) } });
+  assert.equal(enable.status, 200);
+  assert.equal(enable.body.recoveryCodes.length, 8);
+  assert.equal((await s.call("GET", "/api/devices", { token: s.admin })).status, 401); // enabling 2FA signs old sessions out
+
+  const creds = { email: "boss@example.com", password: "correct-horse-battery" };
+  const needs = await s.call("POST", "/api/login", { body: creds });
+  assert.equal(needs.status, 401); assert.equal(needs.body.needs2fa, true);
+  assert.equal((await s.call("POST", "/api/login", { body: { ...creds, code: "123456" } })).status, 401);
+  const good = await s.call("POST", "/api/login", { body: { ...creds, code: totp(setup.body.secret) } });
+  assert.equal(good.status, 200); assert.equal(good.body.twoFactor, true);
+  const t = good.body.token;
+
+  const rec = enable.body.recoveryCodes[0];
+  assert.equal((await s.call("POST", "/api/login", { body: { ...creds, code: rec.toLowerCase() } })).status, 200);
+  assert.equal((await s.call("POST", "/api/login", { body: { ...creds, code: rec } })).status, 401); // single use
+
+  // require 2FA for everyone: a user without it can only reach the account page
+  assert.equal((await s.call("PUT", "/api/settings", { token: t, body: { require2fa: true } })).status, 200);
+  await s.call("POST", "/api/admins", { token: t, body: { email: "new@example.com", password: "another-long-pass" } });
+  const nu = (await s.call("POST", "/api/login", { body: { email: "new@example.com", password: "another-long-pass" } })).body.token;
+  const blocked = await s.call("GET", "/api/devices", { token: nu });
+  assert.equal(blocked.status, 403); assert.equal(blocked.body.need2faSetup, true);
+  assert.equal((await s.call("GET", "/api/me", { token: nu })).body.mustSetup2fa, true);
+  assert.equal((await s.call("POST", "/api/me/2fa/disable", { token: t, body: { password: creds.password, code: totp(setup.body.secret) } })).status, 409);
+});
+
+test("cookie sessions must send the custom header on changes (CSRF); bearer tokens are unaffected", async () => {
+  const s = await makeApp();
+  assert.equal((await s.call("GET", "/api/devices", { cookie: s.admin })).status, 200);
+  assert.equal((await s.call("POST", "/api/groups", { cookie: s.admin, body: { name: "G1" } })).status, 403);
+  assert.equal((await s.call("POST", "/api/groups", { cookie: s.admin, headers: { "x-requested-with": "confiance-dashboard" }, body: { name: "G1" } })).status, 200);
+  assert.equal((await s.call("POST", "/api/groups", { token: s.admin, body: { name: "G2" } })).status, 200);
+});
+
+test("repeated failed sign-ins are recorded with the address", async () => {
+  const s = await makeApp();
+  await s.call("POST", "/api/login", { body: { email: "boss@example.com", password: "nope" }, headers: { "x-nf-client-connection-ip": "203.0.113.9" } });
+  const rows = (await s.call("GET", "/api/audit", { token: s.admin })).body;
+  assert.ok(rows.some((r: any) => r.action === "login-failed" && r.detail.includes("203.0.113.9")));
 });

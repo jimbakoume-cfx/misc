@@ -3,13 +3,15 @@ import { createHash, pbkdf2Sync, randomBytes } from "node:crypto";
 import type { BlobStore, Db } from "./db.ts";
 import { toPg } from "./db.ts";
 import {
-  hashPassword, randomToken, sha256, signSession, verifyPassword, verifySession, type Session,
+  hashPassword, newRecoveryCode, newTotpSecret, normRecovery, randomToken, sha256, signSession, verifyPassword,
+  verifySession, verifyTotp, type Session,
 } from "./auth.ts";
 
 // Phones check in every HEARTBEAT_SEC. "online" tolerates two missed check-ins.
 export const HEARTBEAT_SEC = 300;
 const ONLINE_MS = 12 * 60_000;
 const STALE_MS = 30 * 60_000;
+const MIN_PASSWORD = 12;
 const NO_ACK_TYPES = new Set(["reboot", "unenroll", "update"]);
 const COMMAND_TYPES = new Set(["refresh", "reboot", "lock", "release", "relock", "unenroll", "update"]);
 
@@ -110,11 +112,13 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
 
   async function effectivePolicy(d: Row) {
     const g = d.group_id ? await get("SELECT * FROM device_groups WHERE id=?", d.group_id) : undefined;
+    const pending = !d.approved;
     return {
-      version: d.policy_version + (await policyEpoch()),
+      version: d.policy_version + (await policyEpoch()) + (pending ? 0 : 1_000_000),
       name: d.name,
-      allowedApps: d.allowed_override != null ? json(d.allowed_override, []) : json(g?.allowed_apps, []),
-      message: d.message_override != null ? d.message_override : g?.message ?? "",
+      // A phone nobody has approved yet is locked down but gets no apps.
+      allowedApps: pending ? [] : d.allowed_override != null ? json(d.allowed_override, []) : json(g?.allowed_apps, []),
+      message: pending ? "Waiting for administrator approval" : d.message_override != null ? d.message_override : g?.message ?? "",
       // The on-device exit PIN is optional. When it is off the phone has no way to leave kiosk mode except a dashboard "Release".
       pinSalt: "",
       pinHash: (await setting("pin_enabled", "0")) === "1" ? await setting("pin_hash") : "",
@@ -146,7 +150,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
       agentVersion: status.agentVersion ?? null, agentVersionCode: status.agentVersionCode ?? 0,
       deviceOwner: !!status.deviceOwner, released: !!status.released,
       freeStorageMb: status.freeStorageMb ?? null, uptimeMin: status.uptimeMin ?? null, notes: d.notes,
-      hasOverride: d.allowed_override != null, removing: !!d.remove_pending,
+      hasOverride: d.allowed_override != null, removing: !!d.remove_pending, approved: !!d.approved,
       lastCrash: status.lastCrash || "",
     };
     if (full) {
@@ -178,27 +182,114 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
 
   add("GET", "/healthz", "none", async () => ({ ok: true }));
 
+  // Failed sign-ins are counted per IP+email and per IP; 8 failures lock that key for 5 minutes.
+  async function throttled(keys: string[]) {
+    for (const k of keys) {
+      const a = await get("SELECT * FROM login_attempts WHERE key=?", k);
+      if (a && a.n >= 8 && a.until_ts > now()) throw new HttpError(429, "Too many attempts, try again in a few minutes");
+    }
+  }
+  const failed = (keys: string[]) => Promise.all(keys.map((k) =>
+    run("INSERT INTO login_attempts(key,n,until_ts) VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET n=login_attempts.n+1, until_ts=excluded.until_ts", k, now() + 5 * 60_000)));
+  const clientIp = (c: Ctx) => c.req.headers.get("x-nf-client-connection-ip") ?? c.req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "ip";
+
   add("POST", "/api/login", "none", async (c) => {
     const email = String(c.body.email ?? "").toLowerCase().trim();
-    const key = `${c.req.headers.get("x-nf-client-connection-ip") ?? "ip"}|${email}`;
-    const a = await get("SELECT * FROM login_attempts WHERE key=?", key);
-    if (a && a.n >= 8 && a.until_ts > now()) throw new HttpError(429, "Too many attempts, try again in a few minutes");
+    const ip = clientIp(c);
+    const keys = [`${ip}|${email}`, `ip|${ip}`];
+    await throttled(keys);
     const admin = await get("SELECT * FROM admins WHERE email=?", email);
     if (!admin || !verifyPassword(String(c.body.password ?? ""), admin.pass_hash)) {
-      await run("INSERT INTO login_attempts(key,n,until_ts) VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET n=login_attempts.n+1, until_ts=excluded.until_ts",
-        key, now() + 5 * 60_000);
+      await failed(keys);
+      await audit(email || "?", "login-failed", `from ${ip}`);
       throw new HttpError(401, "Wrong email or password");
     }
-    await run("DELETE FROM login_attempts WHERE key=?", key);
-    const token = signSession(secret, { id: admin.id, email: admin.email, role: admin.role });
-    await audit(admin.email, "login");
-    return reply({ email: admin.email, role: admin.role, token }, 200, {
+    if (admin.totp_enabled) {
+      const code = String(c.body.code ?? "").trim();
+      if (!code) return reply({ error: "Enter the 6-digit code from your authenticator app", needs2fa: true }, 401);
+      let ok = verifyTotp(admin.totp_secret, code);
+      if (!ok) {
+        // a one-time recovery code also works, and is used up
+        const hashes: string[] = json(admin.recovery_codes, []);
+        const h = sha256(normRecovery(code));
+        if (hashes.includes(h)) {
+          ok = true;
+          await run("UPDATE admins SET recovery_codes=? WHERE id=?", JSON.stringify(hashes.filter((x) => x !== h)), admin.id);
+          await audit(admin.email, "recovery-code-used", `from ${ip}`);
+        }
+      }
+      if (!ok) {
+        await failed(keys);
+        await audit(admin.email, "login-failed", `wrong 2FA code from ${ip}`);
+        return reply({ error: "That code is not right", needs2fa: true }, 401);
+      }
+    }
+    await run("DELETE FROM login_attempts WHERE key=?", keys[0]);
+    const token = signSession(secret, { id: admin.id, email: admin.email, role: admin.role, sv: admin.session_version });
+    await audit(admin.email, "login", `from ${ip}`);
+    return reply({ email: admin.email, role: admin.role, token, twoFactor: !!admin.totp_enabled }, 200, {
       "set-cookie": `kiosk_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200${isHttps(c) ? "; Secure" : ""}`,
     });
   });
   add("POST", "/api/logout", "none", async () =>
     reply({ ok: true }, 200, { "set-cookie": "kiosk_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0" }));
-  add("GET", "/api/me", "read", async (c) => ({ email: c.admin!.email, role: c.admin!.role }));
+  add("GET", "/api/me", "read", async (c) => {
+    const a = (await get("SELECT totp_enabled FROM admins WHERE id=?", c.admin!.id))!;
+    return { email: c.admin!.email, role: c.admin!.role, twoFactor: !!a.totp_enabled, mustSetup2fa: await needs2faSetup(c.admin!) };
+  });
+
+  // ---------- my account: password + two-factor ----------
+  async function needs2faSetup(a: Session) {
+    if ((await setting("require_2fa", "0")) !== "1") return false;
+    return !(await get("SELECT totp_enabled FROM admins WHERE id=?", a.id))?.totp_enabled;
+  }
+  const strongPassword = (pw: string) => {
+    if (pw.length < MIN_PASSWORD) throw new HttpError(400, `Use at least ${MIN_PASSWORD} characters (a few random words work well)`);
+  };
+
+  add("POST", "/api/me/password", "read", async (c) => {
+    const me = (await get("SELECT * FROM admins WHERE id=?", c.admin!.id))!;
+    if (!verifyPassword(String(c.body.current ?? ""), me.pass_hash)) {
+      await audit(me.email, "password-change-failed");
+      throw new HttpError(403, "Current password is wrong");
+    }
+    const next = String(c.body.next ?? "");
+    strongPassword(next);
+    if (next === String(c.body.current)) throw new HttpError(400, "Choose a different password");
+    await run("UPDATE admins SET pass_hash=?, session_version=session_version+1 WHERE id=?", hashPassword(next), me.id);
+    await audit(me.email, "password-changed", "all other sessions signed out");
+    const token = signSession(secret, { id: me.id, email: me.email, role: me.role, sv: me.session_version + 1 });
+    return reply({ ok: true }, 200, { "set-cookie": `kiosk_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200${isHttps(c) ? "; Secure" : ""}` });
+  });
+
+  add("POST", "/api/me/2fa/setup", "read", async (c) => {
+    const me = (await get("SELECT * FROM admins WHERE id=?", c.admin!.id))!;
+    if (me.totp_enabled) throw new HttpError(409, "Two-factor sign-in is already on");
+    const sec = newTotpSecret();
+    await run("UPDATE admins SET totp_secret=? WHERE id=?", sec, me.id);
+    const uri = `otpauth://totp/Confiance%20Kiosk:${encodeURIComponent(me.email)}?secret=${sec}&issuer=Confiance%20Kiosk&digits=6&period=30`;
+    return { secret: sec, qr: await QRCode.toDataURL(uri, { margin: 2, width: 280 }) };
+  });
+  add("POST", "/api/me/2fa/enable", "read", async (c) => {
+    const me = (await get("SELECT * FROM admins WHERE id=?", c.admin!.id))!;
+    if (!me.totp_secret) throw new HttpError(400, "Start the setup first");
+    if (!verifyTotp(me.totp_secret, String(c.body.code ?? ""))) throw new HttpError(400, "That code is not right. Check the time on your phone and try again.");
+    const codes = Array.from({ length: 8 }, newRecoveryCode);
+    await run("UPDATE admins SET totp_enabled=1, recovery_codes=?, session_version=session_version+1 WHERE id=?",
+      JSON.stringify(codes.map((x) => sha256(normRecovery(x)))), me.id);
+    await audit(me.email, "2fa-enabled");
+    const token = signSession(secret, { id: me.id, email: me.email, role: me.role, sv: me.session_version + 1 });
+    return reply({ ok: true, recoveryCodes: codes }, 200, { "set-cookie": `kiosk_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200${isHttps(c) ? "; Secure" : ""}` });
+  });
+  add("POST", "/api/me/2fa/disable", "read", async (c) => {
+    const me = (await get("SELECT * FROM admins WHERE id=?", c.admin!.id))!;
+    if (!verifyPassword(String(c.body.password ?? ""), me.pass_hash) || !me.totp_enabled || !verifyTotp(me.totp_secret, String(c.body.code ?? "")))
+      throw new HttpError(403, "Password or code is wrong");
+    if ((await setting("require_2fa", "0")) === "1") throw new HttpError(409, "Two-factor sign-in is required for all users; turn that requirement off first");
+    await run("UPDATE admins SET totp_enabled=0, totp_secret=NULL, recovery_codes='[]', session_version=session_version+1 WHERE id=?", me.id);
+    await audit(me.email, "2fa-disabled");
+    return { ok: true };
+  });
 
   // APK downloads are public on purpose: provisioning fetches them before the device has credentials.
   add("GET", "/apk/:name", "none", async (c) => {
@@ -235,9 +326,10 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
       const n = Number((await get("SELECT COUNT(*)::int c FROM devices"))!.c) + 1;
       name = `${tok.label || "Device"}-${String(n).padStart(3, "0")}`;
       id = await insert(
-        `INSERT INTO devices(name,group_id,token_hash,android_id,serial,model,os_version,enrolled_at,last_seen)
-         VALUES(?,?,?,?,?,?,?,?,?)`,
-        name, tok.group_id, sha256(deviceToken), b.androidId ?? "", b.serial ?? "", b.model ?? "", b.osVersion ?? "", now(), now());
+        `INSERT INTO devices(name,group_id,token_hash,android_id,serial,model,os_version,enrolled_at,last_seen,approved)
+         VALUES(?,?,?,?,?,?,?,?,?,?)`,
+        name, tok.group_id, sha256(deviceToken), b.androidId ?? "", b.serial ?? "", b.model ?? "", b.osVersion ?? "", now(), now(),
+        (await setting("require_approval", "1")) === "1" ? 0 : 1);
     }
     await run("UPDATE enroll_tokens SET uses=uses+1 WHERE token=?", tok.token);
     await audit("device", "enroll", `${name} (${b.model ?? "?"})`);
@@ -287,13 +379,14 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
   add("GET", "/api/overview", "read", async () => {
     const devices = await all("SELECT * FROM devices");
     const rel = await currentRelease();
-    const counts = { total: devices.length, online: 0, stale: 0, offline: 0, lowBattery: 0, outdated: 0, notLocked: 0 };
+    const counts = { total: devices.length, online: 0, stale: 0, offline: 0, lowBattery: 0, outdated: 0, notLocked: 0, pendingApproval: 0 };
     for (const d of devices) {
       const st = json(d.status, {});
       counts[statusOf(d) as "online" | "stale" | "offline"]++;
       if (typeof st.battery === "number" && st.battery >= 0 && st.battery <= 20 && !st.charging) counts.lowBattery++;
       if (rel && (st.agentVersionCode ?? 0) < rel.version_code) counts.outdated++;
       if (!st.deviceOwner || st.released) counts.notLocked++;
+      if (!d.approved) counts.pendingApproval++;
     }
     return { ...counts, currentVersion: rel?.version_name ?? null, intervalSec: HEARTBEAT_SEC };
   });
@@ -333,6 +426,19 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
     }
     return view((await get("SELECT * FROM devices WHERE id=?", d.id))!, true);
   });
+  add("POST", "/api/devices/:id/approve", "write", async (c) => {
+    const d = await deviceOr404(c.params.id);
+    await run("UPDATE devices SET approved=1 WHERE id=?", d.id);
+    await audit(who(c), "approve-device", d.name);
+    return { ok: true };
+  });
+  add("POST", "/api/devices/approve-all", "write", async (c) => {
+    const n = (await all("SELECT id FROM devices WHERE approved=0")).length;
+    await run("UPDATE devices SET approved=1 WHERE approved=0");
+    await audit(who(c), "approve-all-devices", `${n} device(s)`);
+    return { approved: n };
+  });
+
   // Removing a phone that is still locked would strand it, so by default it is first told to unlock itself
   // (`unenroll`) and is deleted from the dashboard as soon as it has received that command.
   // `?force=1` deletes immediately (lost/destroyed phones).
@@ -349,24 +455,34 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
     return { ok: true, removed: false, pending: true };
   });
 
-  async function sendCommand(actor: string, ids: number[], type: string) {
+  // Every command except "refresh" needs the app to be the device owner; on a phone that is only running the
+  // app (installed by hand, not set up from the QR code) Android rejects them, so say so instead of queueing them.
+  const NEEDS_OWNER = new Set(["lock", "reboot", "release", "relock", "unenroll", "update"]);
+  const NOT_MANAGED = "This phone is not managed (the app is not the device owner), so this command cannot work. Factory-reset it and set it up with the QR code.";
+  async function sendCommand(actor: string, ids: number[], type: string, strict = false) {
     if (!COMMAND_TYPES.has(type)) throw new HttpError(400, "Unknown command");
-    let n = 0;
+    let n = 0, skipped = 0;
     for (const id of ids) {
-      if (!(await get("SELECT 1 x FROM devices WHERE id=?", id))) continue;
+      const d = await get("SELECT status FROM devices WHERE id=?", id);
+      if (!d) continue;
+      if (NEEDS_OWNER.has(type) && json(d.status, {}).deviceOwner !== true) {
+        if (strict) throw new HttpError(409, NOT_MANAGED);
+        skipped++;
+        continue;
+      }
       await queueCommand(id, type);
       n++;
     }
-    await audit(actor, `command:${type}`, `${n} device(s)`);
-    return n;
+    await audit(actor, `command:${type}`, `${n} device(s)${skipped ? `, ${skipped} not managed` : ""}`);
+    return { n, skipped };
   }
   add("POST", "/api/devices/:id/commands", "write", async (c) => {
-    const n = await sendCommand(who(c), [Number(c.params.id)], String(c.body.type));
+    const { n } = await sendCommand(who(c), [Number(c.params.id)], String(c.body.type), true);
     if (!n) throw new HttpError(404, "Not found");
     return { ok: true };
   });
   add("POST", "/api/commands/bulk", "write", async (c) =>
-    ({ queued: await sendCommand(who(c), (c.body.ids ?? []).map(Number), String(c.body.type)) }));
+    ((r) => ({ queued: r.n, skipped: r.skipped }))(await sendCommand(who(c), (c.body.ids ?? []).map(Number), String(c.body.type))));
 
   // groups
   add("GET", "/api/groups", "read", async () =>
@@ -491,6 +607,8 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
   add("GET", "/api/settings", "read", async () => ({
     pinSet: !!(await setting("pin_hash")),
     pinEnabled: (await setting("pin_enabled", "0")) === "1",
+    requireApproval: (await setting("require_approval", "1")) === "1",
+    require2fa: (await setting("require_2fa", "0")) === "1",
     disableDebugging: (await setting("disable_debugging", "1")) === "1",
     autoUpdate: (await setting("auto_update", "1")) === "1",
     certSha256: await setting("cert_sha256"),
@@ -515,6 +633,13 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
       await bumpEpoch();
       await audit(who(c), b.pinEnabled ? "enable-device-pin" : "disable-device-pin");
     }
+    if ("requireApproval" in b) { await setSetting("require_approval", b.requireApproval ? "1" : "0"); await audit(who(c), "setting-require-approval", String(!!b.requireApproval)); }
+    if ("require2fa" in b) {
+      if (b.require2fa && !(await get("SELECT 1 x FROM admins WHERE id=? AND totp_enabled=1", c.admin!.id)))
+        throw new HttpError(400, "Turn on two-factor sign-in for your own account first");
+      await setSetting("require_2fa", b.require2fa ? "1" : "0");
+      await audit(who(c), "setting-require-2fa", String(!!b.require2fa));
+    }
     if ("disableDebugging" in b) { await setSetting("disable_debugging", b.disableDebugging ? "1" : "0"); await bumpEpoch(); }
     if ("autoUpdate" in b) await setSetting("auto_update", b.autoUpdate ? "1" : "0");
     if ("certSha256" in b) await setSetting("cert_sha256", String(b.certSha256).trim());
@@ -525,11 +650,12 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
   });
 
   // dashboard users
-  add("GET", "/api/admins", "read", async () => all("SELECT id,email,role FROM admins ORDER BY email"));
+  add("GET", "/api/admins", "read", async () =>
+    (await all("SELECT id,email,role,totp_enabled FROM admins ORDER BY email")).map((a) => ({ id: a.id, email: a.email, role: a.role, twoFactor: !!a.totp_enabled })));
   add("POST", "/api/admins", "write", async (c) => {
     const email = String(c.body.email ?? "").toLowerCase().trim();
-    if (!email.includes("@") || String(c.body.password ?? "").length < 8)
-      throw new HttpError(400, "Valid email and a password of 8+ characters required");
+    if (!email.includes("@")) throw new HttpError(400, "Enter a valid email");
+    strongPassword(String(c.body.password ?? ""));
     if (await get("SELECT 1 x FROM admins WHERE email=?", email)) throw new HttpError(409, "That email already exists");
     await run("INSERT INTO admins(email,pass_hash,role) VALUES(?,?,?)", email, hashPassword(String(c.body.password)), c.body.role === "viewer" ? "viewer" : "admin");
     await audit(who(c), "create-admin", email);
@@ -566,9 +692,19 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
       if (matched.auth === "read" || matched.auth === "write") {
         const h = req.headers.get("authorization");
         const cookie = /(?:^|;\s*)kiosk_session=([^;]+)/.exec(req.headers.get("cookie") ?? "")?.[1];
-        const s = verifySession(secret, h?.startsWith("Bearer ") ? h.slice(7) : cookie);
-        if (!s) throw new HttpError(401, "Not signed in");
+        const viaCookie = !h?.startsWith("Bearer ");
+        const signed = verifySession(secret, viaCookie ? cookie : h!.slice(7));
+        if (!signed) throw new HttpError(401, "Not signed in");
+        // The account must still exist and the session must not have been revoked (password change, 2FA change).
+        const acct = await get("SELECT id,email,role,session_version FROM admins WHERE id=?", signed.id);
+        if (!acct || (signed.sv ?? 1) !== acct.session_version) throw new HttpError(401, "Session expired, sign in again");
+        const s: Session = { ...signed, email: acct.email, role: acct.role };
+        // Browser (cookie) requests that change data must carry our custom header: cross-site forms/fetches cannot.
+        if (viaCookie && !["GET", "HEAD"].includes(req.method) && req.headers.get("x-requested-with") !== "confiance-dashboard")
+          throw new HttpError(403, "Blocked: missing request header");
         if (matched.auth === "write" && s.role !== "admin") throw new HttpError(403, "Read-only account");
+        if (!url.pathname.startsWith("/api/me") && url.pathname !== "/api/logout" && (await needs2faSetup(s)))
+          return reply({ error: "Set up two-factor sign-in on the Account page first", need2faSetup: true }, 403);
         ctx.admin = s;
       } else if (matched.auth === "device") {
         const h = req.headers.get("authorization");

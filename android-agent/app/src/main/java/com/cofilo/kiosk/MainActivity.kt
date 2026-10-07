@@ -133,6 +133,7 @@ class MainActivity : Activity() {
     private fun render() {
         root.removeAllViews()
         val p = Prefs(this)
+        if (p.enrolled && !Policy.isOwner(this)) root.addView(unmanagedBanner())
         root.addView(header(p))
         val body: View = when {
             !p.enrolled -> enrollView(p)
@@ -141,6 +142,16 @@ class MainActivity : Activity() {
         }
         root.addView(body)
         root.addView(footer())
+    }
+
+    /** Red banner when the app was installed by hand: nothing can be locked or controlled in that state. */
+    private fun unmanagedBanner(): View = TextView(this).apply {
+        text = "This phone is NOT managed. The app was installed by hand, so it cannot be locked down or controlled from the dashboard. " +
+            "Ask your administrator to reset the phone and set it up with the QR code."
+        setTextColor(Color.WHITE)
+        setBackgroundColor(Color.parseColor("#B91C1C"))
+        textSize = 13f
+        setPadding(dp(16), dp(10), dp(16), dp(10))
     }
 
     private fun header(p: Prefs): View {
