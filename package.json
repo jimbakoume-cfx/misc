@@ -1,0 +1,21 @@
+{
+  "name": "kiosk-fleet",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "node --test test/api.test.ts",
+    "dev": "netlify dev"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^10.0.0",
+    "@netlify/database": "*",
+    "@netlify/functions": "^5.0.0",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.3.0",
+    "@types/qrcode": "^1.5.5"
+  }
+}

@@ -46,6 +46,11 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("disableDebugging", true)
         set(v) = sp.edit().putBoolean("disableDebugging", v).apply()
 
+    /** Seconds between check-ins; the server can change it through the policy. */
+    var intervalSec: Int
+        get() = sp.getInt("intervalSec", 300)
+        set(v) = sp.edit().putInt("intervalSec", v.coerceIn(60, 3600)).apply()
+
     var lastAppsHash: Int
         get() = sp.getInt("lastAppsHash", 0)
         set(v) = sp.edit().putInt("lastAppsHash", v).apply()

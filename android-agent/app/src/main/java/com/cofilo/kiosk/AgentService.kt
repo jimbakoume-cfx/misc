@@ -15,7 +15,7 @@ import java.io.File
 import kotlin.concurrent.thread
 
 /**
- * Long-running foreground service: enrolls the device, then every [INTERVAL_MS] sends a
+ * Long-running foreground service: enrolls the device, then every [Prefs.intervalSec] seconds sends a
  * heartbeat to the backend and applies the returned policy + commands.
  */
 class AgentService : Service() {
@@ -59,7 +59,7 @@ class AgentService : Service() {
         while (running) {
             runCatching { tick() }.onFailure { Log.w(TAG, "tick failed: ${it.message}") }
             try {
-                Thread.sleep(INTERVAL_MS)
+                Thread.sleep(Prefs(this).intervalSec * 1000L)
             } catch (_: InterruptedException) {
                 return
             }
@@ -117,6 +117,7 @@ class AgentService : Service() {
         prefs.pinSalt = p.optString("pinSalt", prefs.pinSalt)
         prefs.pinHash = p.optString("pinHash", prefs.pinHash)
         prefs.disableDebugging = p.optBoolean("disableDebugging", true)
+        prefs.intervalSec = p.optInt("intervalSec", 300)
         val apps = p.optJSONArray("allowedApps")
         if (apps != null) {
             prefs.allowedApps = (0 until apps.length()).map {
@@ -180,7 +181,6 @@ class AgentService : Service() {
     companion object {
         private const val TAG = "KioskAgent"
         private const val CHANNEL = "agent"
-        private const val INTERVAL_MS = 60_000L
 
         fun start(ctx: Context) {
             ctx.startForegroundService(Intent(ctx, AgentService::class.java))

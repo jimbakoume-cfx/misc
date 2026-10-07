@@ -140,14 +140,14 @@ async function overview() {
     <div class="cards">
       ${s(o.total, "Devices")}
       ${s(o.online, "Online now", "ok")}
-      ${s(o.stale, "Not seen for a few minutes", o.stale ? "warn" : "")}
+      ${s(o.stale, "Missed a check-in", o.stale ? "warn" : "")}
       ${s(o.offline, "Offline", o.offline ? "bad" : "")}
       ${s(o.lowBattery, "Battery ≤ 20%", o.lowBattery ? "warn" : "")}
       ${s(o.outdated, `Old app version${o.currentVersion ? ` (latest ${esc(o.currentVersion)})` : ""}`, o.outdated ? "warn" : "")}
       ${s(o.notLocked, "Not locked down", o.notLocked ? "bad" : "")}
     </div>
     ${o.total === 0 ? `<div class="card">No devices yet. Go to <b>Add devices</b> to generate a QR code and enrol your first phone.</div>` : ""}
-    <p class="muted">Devices check in about once a minute. "Online" means a check-in within 3 minutes. This page refreshes automatically.</p>`;
+    <p class="muted">Devices check in every 5 minutes. "Online" means a check-in within the last 12 minutes. This page refreshes automatically.</p>`;
 }
 
 // ---------- Devices ----------
@@ -229,7 +229,7 @@ async function deviceDialog(id) {
   $("#close").onclick = () => { dlg.close(); render().catch(fail); };
   document.querySelectorAll("[data-cmd]").forEach((b) => b.onclick = async () => {
     if (b.dataset.cmd !== "refresh" && !confirm(`${b.textContent} — are you sure?`)) return;
-    try { await api("POST", `/api/devices/${id}/commands`, { type: b.dataset.cmd }); toast("Command sent. It reaches the device within about a minute."); deviceDialog(id); } catch (e) { fail(e); }
+    try { await api("POST", `/api/devices/${id}/commands`, { type: b.dataset.cmd }); toast("Command sent. The device picks it up at its next check-in (within 5 minutes)."); deviceDialog(id); } catch (e) { fail(e); }
   });
   if (canWrite()) {
     $("#save").onclick = async () => {
@@ -265,7 +265,7 @@ async function groups() {
     $("#gAdd").onclick = () => { const p = $("#gPkg").value.trim(); if (!/^[A-Za-z0-9_.]+$/.test(p)) return toast("Invalid package name"); $(".apps").insertAdjacentHTML("beforeend", `<label><input type="checkbox" value="${esc(p)}" data-label="${esc(p)}" checked> ${esc(p)}</label>`); $("#gPkg").value = ""; };
     $("#gSave").onclick = async () => {
       const body = { name: $("#gName").value, message: $("#gMsg").value, allowedApps: [...$("#dlg").querySelectorAll(".apps input:checked")].map((i) => ({ pkg: i.value, label: i.dataset.label })) };
-      try { g ? await api("PATCH", `/api/groups/${g.id}`, body) : await api("POST", "/api/groups", body); $("#dlg").close(); toast("Saved — devices pick it up within a minute"); groups(); } catch (e) { fail(e); }
+      try { g ? await api("PATCH", `/api/groups/${g.id}`, body) : await api("POST", "/api/groups", body); $("#dlg").close(); toast("Saved — devices pick it up within 5 minutes"); groups(); } catch (e) { fail(e); }
     };
     if (g) $("#gDel").onclick = async () => { if (!confirm("Delete this group? Its devices keep running with no apps until reassigned.")) return; await api("DELETE", `/api/groups/${g.id}`); $("#dlg").close(); groups(); };
   };
@@ -319,7 +319,7 @@ async function releases() {
   const [rs, o, gs] = await Promise.all([api("GET", "/api/releases"), api("GET", "/api/overview"), api("GET", "/api/groups")]);
   $("#view").innerHTML = `
     <h2>App versions</h2>
-    <p class="muted">Upload a new APK to update every device remotely. Devices that are already managed install it silently within a few minutes (when "automatic updates" is on in Settings), or you can push it now.</p>
+    <p class="muted">Upload a new APK to update every device remotely. Devices that are already managed install it silently within about 5–10 minutes (when "automatic updates" is on in Settings), or you can push it now.</p>
     ${canWrite() ? `<div class="card"><b>Upload new version</b>
       <div class="row" style="margin-top:8px"><input type="file" id="apk" accept=".apk"><input id="vName" placeholder="Version name e.g. 1.1.0" style="width:190px"><input id="vCode" type="number" placeholder="Version code e.g. 2" style="width:160px"></div>
       <label>Signing-certificate checksum (only needed the first time; see docs/PROVISIONING.md)</label><input id="vCert" placeholder="base64url SHA-256 of the signing certificate" style="width:100%">
@@ -348,7 +348,7 @@ async function settings() {
     <h2>Settings</h2>
     <div class="grid2">
       <div class="card"><b>Admin PIN</b> <span class="tag ${s.pinSet ? "" : "bad"}">${s.pinSet ? "set" : "not set"}</span>
-        <p class="muted">Used on the phone to unlock it: tap the device name 5 times, then enter the PIN. Change it any time; devices update within a minute.</p>
+        <p class="muted">Used on the phone to unlock it: tap the device name 5 times, then enter the PIN. Change it any time; devices update within 5 minutes.</p>
         <div class="row"><input id="pin" type="password" inputmode="numeric" maxlength="8" placeholder="4–8 digits" ${dis}><button class="btn" id="savePin" ${dis}>Set PIN</button></div></div>
       <div class="card"><b>Behaviour</b>
         <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="autoUpd" ${s.autoUpdate ? "checked" : ""} ${dis}> Update devices automatically when a new version is uploaded</label>

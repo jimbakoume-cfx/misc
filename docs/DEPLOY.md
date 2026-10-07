@@ -1,41 +1,33 @@
-# Deploying the dashboard
+# Deploying the dashboard (Netlify)
 
-The dashboard + API is one small Node 22 service with an embedded SQLite database
-(plenty for hundreds of devices). It needs **HTTPS** and a **persistent disk** for `/data`.
+The dashboard + API run on **Netlify**: static dashboard (`public/`), one serverless function
+(`netlify/functions/api.mts`), **Netlify Database** (Postgres, migrations in `netlify/database/migrations/`)
+and **Netlify Blobs** (APK files). Live site: https://cofilo-kiosk-fleet.netlify.app
 
-## Environment variables
+## Environment variables (Site configuration → Environment variables)
 | Variable | Purpose |
 |---|---|
-| `PUBLIC_URL` | Public HTTPS address, e.g. `https://kiosk.yourcompany.com`. Goes into the QR code. **Required.** |
-| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Creates the first dashboard admin on first start (8+ char password). |
-| `DATA_DIR` | Where the database and APKs live (default `/data` in Docker). Back this up. |
-| `SESSION_SECRET` | Optional; generated and stored in `DATA_DIR` if absent. |
-| `PORT` | Default 8080. |
+| `SESSION_SECRET` | Signs dashboard sessions. Long random string. **Required.** Changing it signs everyone out. |
+| `PUBLIC_URL` | Public HTTPS address, goes into the QR code, e.g. `https://cofilo-kiosk-fleet.netlify.app`. |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Only used to create the very first admin when the database has none. Delete `ADMIN_PASSWORD` afterwards. |
 
-## Docker
-```bash
-docker build -t kiosk-dashboard backend
-docker run -d --restart=always -p 8080:8080 -v kiosk-data:/data \
-  -e PUBLIC_URL=https://kiosk.yourcompany.com \
-  -e ADMIN_EMAIL=you@yourcompany.com -e ADMIN_PASSWORD='choose-a-long-password' \
-  kiosk-dashboard
-```
-Put it behind HTTPS (Caddy, nginx, Cloudflare Tunnel, or a platform such as Fly.io / Render / Railway with a volume).
+## First-time setup
+1. Deploy (`netlify deploy --prod`, or connect the repo). Migrations run automatically.
+2. Sign in, then **Settings → Admin PIN** (used on the phone to unlock it) and change your dashboard password by adding a new admin user and removing the old one.
+3. **Groups & apps**: create groups and tick the apps agents may open.
+4. **Add devices**: create a code and scan its QR on each factory-reset phone (see PROVISIONING.md).
 
-## Without Docker
-```bash
-cd backend && npm ci --omit=dev
-PUBLIC_URL=https://kiosk.yourcompany.com ADMIN_EMAIL=you@x.com ADMIN_PASSWORD=... npm start
-```
+The first APK (`releases/kiosk-agent-1.1.0.apk`) is bundled with the deploy and installed as release #1 on first use.
+Upload later versions on the **App versions** page; phones update themselves.
 
-## First-time setup in the dashboard
-1. Sign in → **Settings** → set the **Admin PIN**.
-2. **App versions** → upload `releases/kiosk-agent-1.0.0.apk` with version name `1.0.0`, code `1`, and the
-   certificate checksum from `releases/kiosk-agent-1.0.0.txt`.
-3. **Groups & apps** → create a group and tick the company apps agents may open (apps appear once a device has reported them; you can also type a package name).
-4. **Add devices** → create a code → scan the QR on each reset phone (see PROVISIONING.md).
+## Deploying changes
+Do not upload the whole repo folder: `android-agent/` may contain your signing keystore. Deploy only
+`public/`, `netlify/`, `netlify.toml`, `package*.json` and `releases/seed.json` + the seed APK.
 
-## Notes
-- Devices call `POST /api/device/heartbeat` about once a minute: ~3 requests/second for 200 devices.
-- Back up `DATA_DIR` (it holds `kiosk.db`, `apks/`, `session.secret`).
-- Tests: `cd backend && npm test`.
+## Capacity and cost
+Phones check in every 5 minutes → ~58k function calls/day for 200 devices (~1.7M/month). The Netlify **Free**
+plan is too small for that; use a paid plan, or raise the interval (policy `intervalSec`, 60–3600).
+Function request bodies are limited to ~6 MB, enough for the current ~0.6 MB APK.
+
+## Tests
+`npm ci && npm test` runs the API against an in-memory Postgres (PGlite).
