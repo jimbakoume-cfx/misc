@@ -1,0 +1,1 @@
+ALTER TABLE devices ADD COLUMN remove_pending INTEGER NOT NULL DEFAULT 0;

@@ -11,6 +11,7 @@ object Api {
     class ApiException(val code: Int, message: String) : Exception(message)
 
     fun post(base: String, path: String, body: JSONObject, deviceToken: String? = null): JSONObject {
+        if (!base.startsWith("https://")) throw ApiException(0, "Server address must start with https://")
         val conn = URL(base.trimEnd('/') + path).openConnection() as HttpURLConnection
         try {
             conn.requestMethod = "POST"

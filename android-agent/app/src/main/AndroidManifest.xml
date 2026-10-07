@@ -19,11 +19,12 @@
     </queries>
 
     <application
+        android:name=".KioskApp"
         android:allowBackup="false"
         android:icon="@drawable/ic_launcher"
         android:label="@string/app_name"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="false">
 
         <!-- Kiosk home screen. Registered as HOME so it is what the device shows at boot. -->
         <activity

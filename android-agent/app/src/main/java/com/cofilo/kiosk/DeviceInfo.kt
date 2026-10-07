@@ -54,6 +54,7 @@ object DeviceInfo {
             .put("agentVersionCode", pkgInfo.longVersionCode)
             .put("deviceOwner", dpm.isDeviceOwnerApp(ctx.packageName))
             .put("released", Prefs(ctx).released)
+            .put("lastCrash", Prefs(ctx).lastCrash)
             .put("uptimeMin", android.os.SystemClock.elapsedRealtime() / 60000)
     }
 

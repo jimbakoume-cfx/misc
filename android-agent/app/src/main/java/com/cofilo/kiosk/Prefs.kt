@@ -51,6 +51,23 @@ class Prefs(context: Context) {
         get() = sp.getString("lastError", "") ?: ""
         set(v) = sp.edit().putString("lastError", v).apply()
 
+    var lastCrash: String
+        get() = sp.getString("lastCrash", "") ?: ""
+        set(v) = sp.edit().putString("lastCrash", v).apply()
+
+    var lastCheckIn: Long
+        get() = sp.getLong("lastCheckIn", 0L)
+        set(v) = sp.edit().putLong("lastCheckIn", v).apply()
+
+    /** Admin-PIN brute-force protection. */
+    var pinFails: Int
+        get() = sp.getInt("pinFails", 0)
+        set(v) = sp.edit().putInt("pinFails", v).apply()
+
+    var pinLockUntil: Long
+        get() = sp.getLong("pinLockUntil", 0L)
+        set(v) = sp.edit().putLong("pinLockUntil", v).apply()
+
     /** Seconds between check-ins; the server can change it through the policy. */
     var intervalSec: Int
         get() = sp.getInt("intervalSec", 300)

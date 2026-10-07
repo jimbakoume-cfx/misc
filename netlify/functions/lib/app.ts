@@ -1,9 +1,9 @@
 import QRCode from "qrcode";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, pbkdf2Sync, randomBytes } from "node:crypto";
 import type { BlobStore, Db } from "./db.ts";
 import { toPg } from "./db.ts";
 import {
-  hashPassword, hashPin, randomToken, sha256, signSession, verifyPassword, verifySession, type Session,
+  hashPassword, randomToken, sha256, signSession, verifyPassword, verifySession, type Session,
 } from "./auth.ts";
 
 // Phones check in every HEARTBEAT_SEC. "online" tolerates two missed check-ins.
@@ -46,6 +46,8 @@ const CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
 const randomCode = () => Array.from(randomBytes(10), (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
 const normCode = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/O/g, "0").replace(/[IL]/g, "1");
 const showCode = (t: string) => (/^[2-9A-HJKMNP-Z]{10}$/.test(t) ? `${t.slice(0, 5)}-${t.slice(5)}` : t);
+const PIN_ITERATIONS = 120_000;
+const pinHashV2 = (salt: string, pin: string) => `pbkdf2$${PIN_ITERATIONS}$${salt}$${pbkdf2Sync(pin, salt, PIN_ITERATIONS, 32, "sha256").toString("hex")}`;
 const sha256Buf = (b: ArrayBuffer) => createHash("sha256").update(Buffer.from(b)).digest("hex");
 
 interface Ctx {
@@ -113,8 +115,9 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
       name: d.name,
       allowedApps: d.allowed_override != null ? json(d.allowed_override, []) : json(g?.allowed_apps, []),
       message: d.message_override != null ? d.message_override : g?.message ?? "",
-      pinSalt: await setting("pin_salt"),
-      pinHash: await setting("pin_hash"),
+      // The on-device exit PIN is optional. When it is off the phone has no way to leave kiosk mode except a dashboard "Release".
+      pinSalt: "",
+      pinHash: (await setting("pin_enabled", "0")) === "1" ? await setting("pin_hash") : "",
       disableDebugging: (await setting("disable_debugging", "1")) === "1",
       intervalSec: HEARTBEAT_SEC,
     };
@@ -143,7 +146,8 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
       agentVersion: status.agentVersion ?? null, agentVersionCode: status.agentVersionCode ?? 0,
       deviceOwner: !!status.deviceOwner, released: !!status.released,
       freeStorageMb: status.freeStorageMb ?? null, uptimeMin: status.uptimeMin ?? null, notes: d.notes,
-      hasOverride: d.allowed_override != null,
+      hasOverride: d.allowed_override != null, removing: !!d.remove_pending,
+      lastCrash: status.lastCrash || "",
     };
     if (full) {
       out.allowedOverride = d.allowed_override != null ? json(d.allowed_override, []) : null;
@@ -264,6 +268,11 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
       await run("UPDATE commands SET status=?, sent_at=?, done_at=? WHERE id=?", instant ? "done" : "sent", now(), instant ? now() : null, cmd.id);
     }
     const fresh = (await get("SELECT * FROM devices WHERE id=?", d.id))!;
+    if (fresh.remove_pending && cmds.some((cmd) => cmd.type === "unenroll")) {
+      // The phone now holds the unlock command: it can leave the fleet.
+      await run("DELETE FROM devices WHERE id=?", d.id);
+      await audit("device", "removed", `${d.name} released and removed`);
+    }
     return {
       policy: await effectivePolicy(fresh),
       commands: cmds.map((cmd) => {
@@ -324,11 +333,20 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
     }
     return view((await get("SELECT * FROM devices WHERE id=?", d.id))!, true);
   });
+  // Removing a phone that is still locked would strand it, so by default it is first told to unlock itself
+  // (`unenroll`) and is deleted from the dashboard as soon as it has received that command.
+  // `?force=1` deletes immediately (lost/destroyed phones).
   add("DELETE", "/api/devices/:id", "write", async (c) => {
     const d = await deviceOr404(c.params.id);
-    await run("DELETE FROM devices WHERE id=?", d.id);
-    await audit(who(c), "delete-device", d.name);
-    return { ok: true };
+    if (c.query.get("force") === "1" || json(d.status, {}).deviceOwner !== true) {
+      await run("DELETE FROM devices WHERE id=?", d.id);
+      await audit(who(c), "delete-device", d.name);
+      return { ok: true, removed: true };
+    }
+    await run("UPDATE devices SET remove_pending=1 WHERE id=?", d.id);
+    await queueCommand(d.id, "unenroll");
+    await audit(who(c), "remove-device-requested", d.name);
+    return { ok: true, removed: false, pending: true };
   });
 
   async function sendCommand(actor: string, ids: number[], type: string) {
@@ -472,6 +490,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
   // settings
   add("GET", "/api/settings", "read", async () => ({
     pinSet: !!(await setting("pin_hash")),
+    pinEnabled: (await setting("pin_enabled", "0")) === "1",
     disableDebugging: (await setting("disable_debugging", "1")) === "1",
     autoUpdate: (await setting("auto_update", "1")) === "1",
     certSha256: await setting("cert_sha256"),
@@ -485,9 +504,16 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
       if (!/^\d{4,8}$/.test(pin)) throw new HttpError(400, "PIN must be 4–8 digits");
       const salt = randomToken(8);
       await setSetting("pin_salt", salt);
-      await setSetting("pin_hash", hashPin(salt, pin));
+      await setSetting("pin_hash", pinHashV2(salt, pin));
+      await setSetting("pin_enabled", "1");
       await bumpEpoch();
       await audit(who(c), "change-pin");
+    }
+    if ("pinEnabled" in b) {
+      if (b.pinEnabled && !(await setting("pin_hash"))) throw new HttpError(400, "Set a PIN first");
+      await setSetting("pin_enabled", b.pinEnabled ? "1" : "0");
+      await bumpEpoch();
+      await audit(who(c), b.pinEnabled ? "enable-device-pin" : "disable-device-pin");
     }
     if ("disableDebugging" in b) { await setSetting("disable_debugging", b.disableDebugging ? "1" : "0"); await bumpEpoch(); }
     if ("autoUpdate" in b) await setSetting("auto_update", b.autoUpdate ? "1" : "0");

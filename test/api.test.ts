@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { createApp, type Seed } from "../netlify/functions/lib/app.ts";
-import { hashPin } from "../netlify/functions/lib/auth.ts";
 
 /** Runs the real function code against an in-memory Postgres (PGlite) and an in-memory blob store. */
 async function makeApp(opts: { seed?: Seed } = {}) {
@@ -103,7 +102,12 @@ test("heartbeat returns group policy with sanitised apps, PIN hash and interval"
   assert.deepEqual(hb.body.policy.allowedApps, [{ pkg: "com.company.crm", label: "CRM" }]);
   assert.equal(hb.body.policy.message, "Welcome");
   assert.equal(hb.body.policy.intervalSec, 300);
-  assert.equal(hb.body.policy.pinHash, hashPin(hb.body.policy.pinSalt, "4321"));
+  assert.match(hb.body.policy.pinHash, /^pbkdf2\$120000\$[^$]+\$[0-9a-f]{64}$/);
+  // PIN can be switched off: phones then get no PIN at all (dashboard-only release)
+  await call("PUT", "/api/settings", { token: admin, body: { pinEnabled: false } });
+  const noPin = await call("POST", "/api/device/heartbeat", { token: deviceToken, body: { status: { battery: 15, charging: false, agentVersionCode: 1, agentVersion: "1.0.0", deviceOwner: true } } });
+  assert.equal(noPin.body.policy.pinHash, "");
+  await call("PUT", "/api/settings", { token: admin, body: { pinEnabled: true } });
   assert.equal((await call("POST", "/api/device/heartbeat", { token: "bad", body: {} })).status, 401);
 
   const list = await call("GET", "/api/devices", { token: admin });
@@ -145,7 +149,7 @@ test("commands are delivered once and acked", async () => {
 test("release upload, provisioning QR payload, auto-update command", async () => {
   assert.equal((await call("GET", `/api/provisioning/${enrollToken}`, { token: admin })).status, 409);
   const apk = new Uint8Array(5000).fill(7);
-  const up = await call("PUT", "/api/releases?versionCode=2&versionName=1.1.3&certSha256=abcDEF_-123", { token: admin, raw: apk });
+  const up = await call("PUT", "/api/releases?versionCode=2&versionName=1.2.0&certSha256=abcDEF_-123", { token: admin, raw: apk });
   assert.equal(up.status, 200);
   const dl = await call("GET", "/apk/latest.apk");
   assert.equal(dl.status, 200);
@@ -187,9 +191,28 @@ test("audit log records admin actions", async () => {
   assert.ok(rows.some((r: any) => r.action === "upload-release"));
 });
 
-test("deleting a device invalidates its token", async () => {
-  await call("DELETE", `/api/devices/${deviceId}`, { token: admin });
+test("removing a locked phone releases it first, then deletes it once it has the command", async () => {
+  await call("POST", "/api/device/heartbeat", { token: deviceToken, body: { status: { deviceOwner: true } } });
+  const del = await call("DELETE", `/api/devices/${deviceId}`, { token: admin });
+  assert.equal(del.body.removed, false);
+  assert.equal(del.body.pending, true);
+  const listed = (await call("GET", "/api/devices", { token: admin })).body.find((d: any) => d.id === deviceId);
+  assert.equal(listed.removing, true);
+  // next check-in delivers the unlock command and the phone leaves the fleet
+  const hb = await call("POST", "/api/device/heartbeat", { token: deviceToken, body: { status: { deviceOwner: true } } });
+  assert.equal(hb.status, 200);
+  assert.ok(hb.body.commands.some((c: any) => c.type === "unenroll"));
+  assert.equal((await call("GET", `/api/devices/${deviceId}`, { token: admin })).status, 404);
   assert.equal((await call("POST", "/api/device/heartbeat", { token: deviceToken, body: {} })).status, 401);
+});
+
+test("force-delete removes a phone immediately; unmanaged phones are deleted straight away", async () => {
+  const tok = (await call("POST", "/api/enroll-tokens", { token: admin, body: { label: "F", maxUses: 3 } })).body.token;
+  const a = (await call("POST", "/api/device/enroll", { body: { enrollToken: tok, serial: "F1", androidId: "F1", model: "m", osVersion: "o" } })).body;
+  await call("POST", "/api/device/heartbeat", { token: a.deviceToken, body: { status: { deviceOwner: true } } });
+  assert.equal((await call("DELETE", `/api/devices/${a.id}?force=1`, { token: admin })).body.removed, true);
+  const b = (await call("POST", "/api/device/enroll", { body: { enrollToken: tok, serial: "F2", androidId: "F2", model: "m", osVersion: "o" } })).body;
+  assert.equal((await call("DELETE", `/api/devices/${b.id}`, { token: admin })).body.removed, true);
 });
 
 test("bundled seed release is installed on first request and used for provisioning", async () => {
@@ -199,7 +222,7 @@ test("bundled seed release is installed on first request and used for provisioni
   const s = await makeApp({ seed });
   const rels = await s.call("GET", "/api/releases", { token: s.admin });
   assert.equal(rels.body.length, 1);
-  assert.equal(rels.body[0].versionName, "1.1.3");
+  assert.equal(rels.body[0].versionName, "1.2.0");
   assert.equal(rels.body[0].certSha256, meta.certSha256);
   const dl = await s.call("GET", "/apk/latest.apk");
   assert.equal(dl.buf!.byteLength, buf.byteLength);

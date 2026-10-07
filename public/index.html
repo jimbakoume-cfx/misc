@@ -175,7 +175,7 @@ async function devices() {
       <thead><tr><th><input type="checkbox" id="all"></th><th>Device</th><th>Status</th><th>Battery</th><th>Group</th><th>Model</th><th>App</th><th>Last seen</th></tr></thead>
       <tbody>${list.map((d) => `<tr class="clickable" data-id="${d.id}">
         <td><input type="checkbox" class="sel" data-id="${d.id}" ${selected.has(d.id) ? "checked" : ""}></td>
-        <td><b>${esc(d.name)}</b>${d.released ? ' <span class="tag bad">released</span>' : ""}${!d.deviceOwner ? ' <span class="tag warn">not locked</span>' : ""}</td>
+        <td><b>${esc(d.name)}</b>${d.removing ? ' <span class="tag warn">removing…</span>' : ""}${d.released ? ' <span class="tag bad">released</span>' : ""}${!d.deviceOwner ? ' <span class="tag warn">not locked</span>' : ""}</td>
         <td><span class="dot ${d.state}"></span>${d.state}</td>
         <td>${d.battery == null || d.battery < 0 ? "—" : d.battery + "%" + (d.charging ? " ⚡" : "")}</td>
         <td>${esc(gname(d.groupId))}${d.hasOverride ? ' <span class="tag">custom</span>' : ""}</td>
@@ -227,7 +227,7 @@ async function deviceDialog(id) {
       <button class="btn ghost" data-cmd="lock">Lock screen</button>
       <button class="btn ghost" data-cmd="reboot">Reboot</button>
       <button class="btn ghost" data-cmd="${d.released ? "relock" : "release"}">${d.released ? "Re-lock kiosk" : "Release (unlock) device"}</button>
-      <button class="btn danger" id="del">Remove from fleet</button></div>` : ""}
+      <button class="btn danger" id="del">Release &amp; remove</button></div>` : ""}
     <h3 style="margin-top:20px">Recent commands</h3>
     <table><tbody>${d.commands.map((c) => `<tr><td>${esc(c.type)}</td><td>${esc(c.status)}${c.error ? " — " + esc(c.error) : ""}</td><td>${when(c.created_at)}</td></tr>`).join("") || '<tr><td class="muted">None</td></tr>'}</tbody></table>`;
   const dlg = $("#dlg"); if (!dlg.open) dlg.showModal();
@@ -241,7 +241,16 @@ async function deviceDialog(id) {
       const override = $("#dOverride").checked ? [...$("#dApps").querySelectorAll("input:checked")].map((i) => ({ pkg: i.value, label: i.dataset.label })) : null;
       try { await api("PATCH", `/api/devices/${id}`, { name: $("#dName").value, groupId: $("#dGroup").value ? +$("#dGroup").value : null, allowedOverride: override, messageOverride: $("#dMsg").value || null, notes: $("#dNotes").value }); toast("Saved"); deviceDialog(id); } catch (e) { fail(e); }
     };
-    $("#del").onclick = async () => { if (!confirm("Remove this device from the dashboard? It will stop receiving policy.")) return; try { await api("DELETE", `/api/devices/${id}`); dlg.close(); render(); } catch (e) { fail(e); } };
+    $("#del").onclick = async () => {
+      if (!confirm("Release this phone and remove it from the fleet?\n\nIt unlocks itself the next time it checks in (within a few minutes), then disappears from this list. Cancel to keep it.")) return;
+      try {
+        const r = await api("DELETE", `/api/devices/${id}`);
+        toast(r.removed ? "Device removed" : "Unlock command sent. The phone is removed once it receives it.");
+        dlg.close(); render();
+      } catch (e) { fail(e); }
+    };
+    if (d.removing) $("#del").insertAdjacentHTML("afterend", ` <button class="btn ghost" id="delNow">Delete now (phone lost)</button>`);
+    $("#delNow")?.addEventListener("click", async () => { if (!confirm("Delete immediately? A phone that is still locked will stay locked and unmanaged.")) return; await api("DELETE", `/api/devices/${id}?force=1`); dlg.close(); render(); });
   }
 }
 
@@ -353,9 +362,10 @@ async function settings() {
   $("#view").innerHTML = `
     <h2>Settings</h2>
     <div class="grid2">
-      <div class="card"><b>Admin PIN</b> <span class="tag ${s.pinSet ? "" : "bad"}">${s.pinSet ? "set" : "not set"}</span>
-        <p class="muted">Used on the phone to unlock it: tap the device name 5 times, then enter the PIN. Change it any time; devices update within 5 minutes.</p>
-        <div class="row"><input id="pin" type="password" inputmode="numeric" maxlength="8" placeholder="4–8 digits" ${dis}><button class="btn" id="savePin" ${dis}>Set PIN</button></div></div>
+      <div class="card"><b>Exit PIN on phones</b> <span class="tag ${s.pinEnabled ? "warn" : ""}">${s.pinEnabled ? "on" : "off (recommended)"}</span>
+        <p class="muted">Off: nobody holding a phone can leave kiosk mode. Only "Release" in this dashboard can. Turn it on only if a supervisor needs an on-phone way out: tap the device name 5 times, then enter the PIN.</p>
+        <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="pinOn" ${s.pinEnabled ? "checked" : ""} ${s.pinSet ? "" : "disabled"} ${dis}> Allow an exit PIN on phones</label>
+        <div class="row" style="margin-top:8px"><input id="pin" type="password" inputmode="numeric" maxlength="8" placeholder="${s.pinSet ? "new PIN (4–8 digits)" : "choose a PIN (4–8 digits)"}" ${dis}><button class="btn" id="savePin" ${dis}>${s.pinSet ? "Change PIN" : "Set PIN &amp; turn on"}</button></div></div>
       <div class="card"><b>Behaviour</b>
         <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="autoUpd" ${s.autoUpdate ? "checked" : ""} ${dis}> Update devices automatically when a new version is uploaded</label>
         <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="noDebug" ${s.disableDebugging ? "checked" : ""} ${dis}> Block USB debugging on devices (recommended)</label></div>
@@ -371,6 +381,7 @@ async function settings() {
     </div>`;
   const put = async (body, msg) => { try { await api("PUT", "/api/settings", body); toast(msg); settings(); } catch (e) { fail(e); } };
   $("#savePin")?.addEventListener("click", () => put({ pin: $("#pin").value }, "PIN updated"));
+  $("#pinOn")?.addEventListener("change", (e) => put({ pinEnabled: e.target.checked }, "Saved"));
   $("#autoUpd")?.addEventListener("change", (e) => put({ autoUpdate: e.target.checked }, "Saved"));
   $("#noDebug")?.addEventListener("change", (e) => put({ disableDebugging: e.target.checked }, "Saved"));
   $("#saveNet")?.addEventListener("click", () => put({ wifiSsid: $("#ssid").value, wifiPassword: $("#wpass").value, certSha256: $("#cert").value }, "Saved"));

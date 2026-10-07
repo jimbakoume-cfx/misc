@@ -8,6 +8,8 @@ import android.content.IntentFilter
 import android.os.UserManager
 import android.provider.Settings
 import java.security.MessageDigest
+import javax.crypto.SecretKeyFactory
+import javax.crypto.spec.PBEKeySpec
 
 /**
  * Applies / removes the device lockdown. Everything here needs the app to be the
@@ -30,6 +32,8 @@ object Policy {
         UserManager.DISALLOW_NETWORK_RESET,
         UserManager.DISALLOW_FUN,
         UserManager.DISALLOW_CONFIG_DATE_TIME,
+        UserManager.DISALLOW_APPS_CONTROL,          // no force-stop / clear-data / uninstall from Settings
+        UserManager.DISALLOW_SYSTEM_ERROR_DIALOGS,  // no "app isn't responding" pop-ups
     )
 
     fun dpm(ctx: Context): DevicePolicyManager =
@@ -39,14 +43,24 @@ object Policy {
 
     fun isOwner(ctx: Context) = dpm(ctx).isDeviceOwnerApp(ctx.packageName)
 
-    fun hashPin(salt: String, pin: String): String =
-        MessageDigest.getInstance("SHA-256").digest((salt + pin).toByteArray())
-            .joinToString("") { "%02x".format(it) }
+    private fun hex(b: ByteArray) = b.joinToString("") { "%02x".format(it) }
 
+    private fun sha256Pin(salt: String, pin: String): String =
+        hex(MessageDigest.getInstance("SHA-256").digest((salt + pin).toByteArray()))
+
+    /** PIN hashes are `pbkdf2$<iterations>$<salt>$<hex>`; the old salted-SHA-256 form is still accepted. */
     fun checkPin(ctx: Context, pin: String): Boolean {
         val p = Prefs(ctx)
-        if (p.pinHash.isEmpty()) return false
-        return hashPin(p.pinSalt, pin) == p.pinHash
+        val stored = p.pinHash
+        if (stored.isEmpty()) return false
+        val actual = if (stored.startsWith("pbkdf2$")) {
+            val parts = stored.split("$")
+            if (parts.size != 4) return false
+            val spec = PBEKeySpec(pin.toCharArray(), parts[2].toByteArray(), parts[1].toIntOrNull() ?: return false, 256)
+            hex(SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded)
+        } else sha256Pin(p.pinSalt, pin)
+        val expected = if (stored.startsWith("pbkdf2$")) stored.substringAfterLast("$") else stored
+        return MessageDigest.isEqual(actual.toByteArray(), expected.toByteArray())
     }
 
     /** Applies the current prefs as the kiosk lockdown. Safe to call repeatedly. */
@@ -61,6 +75,7 @@ object Policy {
         runCatching { dpm.setLockTaskFeatures(admin, DevicePolicyManager.LOCK_TASK_FEATURE_HOME) }
         runCatching { dpm.setKeyguardDisabled(admin, true) }
         runCatching { dpm.setStatusBarDisabled(admin, true) }
+        runCatching { dpm.setUserControlDisabledPackages(admin, pkgs.toList()) }
         runCatching { dpm.setPermissionPolicy(admin, DevicePolicyManager.PERMISSION_POLICY_AUTO_GRANT) }
         runCatching {
             dpm.setGlobalSetting(admin, Settings.Global.STAY_ON_WHILE_PLUGGED_IN, "7")
@@ -111,6 +126,16 @@ object Policy {
     fun unenroll(ctx: Context) {
         release(ctx)
         runCatching { dpm(ctx).clearDeviceOwnerApp(ctx.packageName) }
+        // Forget the fleet so the phone starts from the "enter server and code" screen again.
+        Prefs(ctx).apply {
+            deviceToken = ""
+            enrollToken = ""
+            allowedApps = emptyList()
+            pinHash = ""
+            released = false
+            message = ""
+        }
+        notifyChanged(ctx)
     }
 
     private fun notifyChanged(ctx: Context) {

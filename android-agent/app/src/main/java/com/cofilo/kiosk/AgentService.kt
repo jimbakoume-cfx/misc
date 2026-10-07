@@ -123,6 +123,7 @@ class AgentService : Service() {
             }
             throw e
         }
+        prefs.lastCheckIn = System.currentTimeMillis()
         if (body.has("apps")) prefs.lastAppsHash = hash
         // Server received the acks; clear them.
         while (pendingAcks.length() > 0) pendingAcks.remove(0)

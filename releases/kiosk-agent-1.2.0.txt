@@ -1,5 +1,5 @@
 Package:            com.cofilo.kiosk
 App name:           Confiance Kiosk
 Admin component:    com.cofilo.kiosk/.AdminReceiver
-Version:            1.1.3 (code 5)
+Version:            1.2.0 (code 6)
 Cert SHA-256 (QR):  xSBCO6TSizlRm1mu45ZvzQ7748VQcVBEo81rA8fTi_4
