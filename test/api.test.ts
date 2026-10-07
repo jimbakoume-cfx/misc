@@ -250,7 +250,7 @@ test("bundled seed release is installed on first request and used for provisioni
   const s = await makeApp({ seed });
   const rels = await s.call("GET", "/api/releases", { token: s.admin });
   assert.equal(rels.body.length, 1);
-  assert.equal(rels.body[0].versionName, "1.3.0");
+  assert.equal(rels.body[0].versionName, meta.versionName);
   assert.equal(rels.body[0].certSha256, meta.certSha256);
   const dl = await s.call("GET", "/apk/latest.apk");
   assert.equal(dl.buf!.byteLength, buf.byteLength);
@@ -392,4 +392,18 @@ test("a stale dashboard tab gets a clear instruction instead of a cryptic error"
   const r = await s.call("POST", "/api/groups", { cookie: s.admin, body: { name: "Stale" } });
   assert.equal(r.status, 403);
   assert.match(r.body.error, /out of date\. Reload/);
+});
+
+test("setup diagnostics: phones can report setup steps and downloads are noted, with throttling", async () => {
+  const s = await makeApp();
+  await s.call("PUT", "/api/releases?versionCode=9&versionName=9.9.9&certSha256=x", { token: s.admin, raw: new Uint8Array(3000).fill(5) });
+  assert.equal((await s.call("GET", "/apk/latest.apk", { headers: { "user-agent": "ManagedProvisioning/1.0" } })).status, 200);
+  assert.equal((await s.call("GET", "/apk/latest.apk")).status, 200);
+  const b = await s.call("POST", "/api/setup-beacon", { body: { step: "get-provisioning-mode", detail: "allowed=[1,2] sdk=35", model: "samsung SM-A175F" } });
+  assert.equal(b.status, 200);
+  await s.call("POST", "/api/setup-beacon", { body: { step: "x<script>", detail: "y".repeat(1000), model: "m" } });
+  const rows = (await s.call("GET", "/api/audit", { token: s.admin })).body;
+  assert.equal(rows.filter((r: any) => r.action === "apk-download").length, 1);                 // two downloads, one note
+  assert.ok(rows.some((r: any) => r.action === "setup:get-provisioning-mode" && r.detail.includes("allowed=[1,2]")));
+  assert.ok(rows.some((r: any) => r.action === "setup:xscript" && r.detail.length === 300));      // sanitised and capped
 });

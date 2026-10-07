@@ -333,8 +333,23 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
   });
 
   // APK downloads are public on purpose: provisioning fetches them before the device has credentials.
+  // Setup diagnostics: during QR setup the app reports each step, so a phone that hangs can be traced. No secrets, throttled.
+  add("POST", "/api/setup-beacon", "none", async (c) => {
+    const recent = await get("SELECT COUNT(*)::int n FROM audit WHERE action LIKE 'setup:%' AND ts>?", now() - 3_600_000);
+    if (Number(recent?.n ?? 0) > 300) throw new HttpError(429, "Too many reports");
+    const step = String(c.body.step ?? "").replace(/[^a-z0-9-]/gi, "").slice(0, 40) || "unknown";
+    await audit(`phone ${String(c.body.model ?? "?").slice(0, 40)}`, `setup:${step}`, String(c.body.detail ?? "").slice(0, 300));
+    return { ok: true };
+  });
+
   add("GET", "/apk/:name", "none", async (c) => {
     const name = c.params.name;
+    if (name === "latest.apk") {
+      // Note downloads (rate-limited to one entry a minute) so a phone that never fetches the app is easy to spot.
+      const ua = (c.req.headers.get("user-agent") ?? "?").slice(0, 80);
+      if (!(await get("SELECT 1 x FROM audit WHERE action='apk-download' AND ts>?", now() - 60_000)))
+        await audit("download", "apk-download", `${clientIp(c)} ${ua}`);
+    }
     const rel = name === "latest.apk" ? await currentRelease() : await get("SELECT * FROM releases WHERE sha256=?", name.replace(/\.apk$/, ""));
     const data = rel ? await blobs.get(rel.sha256) : null;
     if (!rel || !data) throw new HttpError(404, "No such release");

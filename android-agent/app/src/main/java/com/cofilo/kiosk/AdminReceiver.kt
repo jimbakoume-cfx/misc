@@ -7,7 +7,12 @@ import android.content.Intent
 import android.os.Bundle
 
 class AdminReceiver : DeviceAdminReceiver() {
+    override fun onEnabled(context: Context, intent: Intent) {
+        Beacon.send(context, "admin-enabled", "owner=${Policy.isOwner(context)}")
+    }
+
     override fun onProfileProvisioningComplete(context: Context, intent: Intent) {
+        Beacon.send(context, "provisioning-complete", "owner=${Policy.isOwner(context)}")
         @Suppress("DEPRECATION")
         val extras = intent.getParcelableExtra<Bundle>(DevicePolicyManager.EXTRA_PROVISIONING_ADMIN_EXTRAS_BUNDLE)
         Provision.consume(context, extras)
