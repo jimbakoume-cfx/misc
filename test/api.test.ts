@@ -190,7 +190,7 @@ test("release upload, provisioning QR payload, auto-update command", async () =>
   assert.equal(prov.status, 200);
   const p = prov.body.payload;
   assert.equal(p["android.app.extra.PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME"], "com.cofilo.kiosk/.AdminReceiver");
-  assert.equal(p["android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION"], "https://kiosk.example.com/apk/latest.apk");
+  assert.equal(p["android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION"], "https://kiosk.example.com/kiosk-agent.apk");
   assert.equal(p["android.app.extra.PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM"], "abcDEF_-123");
   assert.deepEqual(p["android.app.extra.PROVISIONING_ADMIN_EXTRAS_BUNDLE"], { server_url: "https://kiosk.example.com", enroll_token: enrollToken });
   assert.match(prov.body.qr, /^data:image\/png;base64,/);

@@ -41,3 +41,11 @@
   for = "/fonts/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
+
+# The setup QR points at this static copy of the latest app: the CDN gives phones a Content-Length and range support,
+# which Android's setup wizard expects. Copy the newest APK here before each deploy.
+[[headers]]
+  for = "/kiosk-agent.apk"
+  [headers.values]
+    Content-Type = "application/vnd.android.package-archive"
+    Cache-Control = "no-cache"
