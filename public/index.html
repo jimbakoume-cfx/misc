@@ -3,19 +3,23 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Kiosk Fleet Dashboard</title>
+<title>Confiance Kiosk</title>
+<link rel="icon" href="/logo-mark.svg" type="image/svg+xml">
 <style>
   :root {
     --bg:#f4f6fa; --card:#fff; --ink:#0f172a; --muted:#64748b; --line:#e2e8f0;
-    --brand:#1f6feb; --ok:#16a34a; --warn:#d97706; --bad:#dc2626;
+    --brand:#081a51; --logo:#081a51; --ok:#16a34a; --warn:#d97706; --bad:#dc2626;
   }
   @media (prefers-color-scheme: dark) {
-    :root { --bg:#0b1220; --card:#131c2e; --ink:#e5ecf6; --muted:#94a3b8; --line:#243049; }
+    :root { --bg:#0b1220; --card:#131c2e; --ink:#e5ecf6; --muted:#94a3b8; --line:#243049; --brand:#3b63e0; --logo:#e5ecf6; }
   }
   * { box-sizing:border-box; }
   body { margin:0; font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--ink); }
   header { display:flex; align-items:center; gap:16px; padding:12px 24px; background:var(--card); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; flex-wrap:wrap; }
-  header h1 { font-size:17px; margin:0 12px 0 0; }
+  header h1 { font-size:17px; margin:0 12px 0 0; display:flex; align-items:center; gap:10px; color:var(--logo); }
+  .mark { height:30px; width:auto; color:var(--logo); }
+  #login .mark { height:64px; display:block; margin:0 auto 8px; }
+  #login h2 { text-align:center; color:var(--logo); }
   nav { display:flex; gap:4px; flex-wrap:wrap; flex:1; }
   nav button { background:none; border:0; padding:8px 12px; border-radius:8px; color:var(--muted); font:inherit; cursor:pointer; }
   nav button.active { background:var(--brand); color:#fff; }
@@ -62,7 +66,8 @@
 <body>
 
 <div id="login" class="card hidden">
-  <h2>Kiosk Fleet Dashboard</h2>
+  <svg class="mark" viewBox="350 0 492 548" aria-hidden="true"><path d="M804.4 136A227.5 227.5 0 0 0 412.7 361.2M571.2 493.7A227.5 227.5 0 0 0 804.4 408" fill="none" stroke="currentColor" stroke-width="89"/><path fill="currentColor" fill-rule="evenodd" d="M614 155C658 155 695 190 695 235C695 275 665 310 612 362C560 310 535 275 535 235C535 190 570 155 614 155ZM614 197A38 38 0 1 0 614 273A38 38 0 1 0 614 197Z"/><path fill="currentColor" d="M395 428L380 397C420 350 480 325 548 305L548 316C490 340 430 375 395 428ZM505 377C525 360 545 345 565 333L572 345C555 360 540 372 527 380ZM438 472C445 440 460 418 475 402L500 405C480 425 465 450 460 495ZM610 360C540 405 510 460 530 520C540 535 570 540 588 546C555 520 548 470 580 425C595 400 610 385 612 360Z"/></svg>
+  <h2>Confiance Kiosk</h2>
   <form id="loginForm">
     <label>Email</label><input id="email" type="email" required autocomplete="username" style="width:100%">
     <label>Password</label><input id="password" type="password" required autocomplete="current-password" style="width:100%">
@@ -73,7 +78,7 @@
 
 <div id="app" class="hidden">
   <header>
-    <h1>📱 Kiosk Fleet</h1>
+    <h1><svg class="mark" viewBox="350 0 492 548" aria-hidden="true"><path d="M804.4 136A227.5 227.5 0 0 0 412.7 361.2M571.2 493.7A227.5 227.5 0 0 0 804.4 408" fill="none" stroke="currentColor" stroke-width="89"/><path fill="currentColor" fill-rule="evenodd" d="M614 155C658 155 695 190 695 235C695 275 665 310 612 362C560 310 535 275 535 235C535 190 570 155 614 155ZM614 197A38 38 0 1 0 614 273A38 38 0 1 0 614 197Z"/><path fill="currentColor" d="M395 428L380 397C420 350 480 325 548 305L548 316C490 340 430 375 395 428ZM505 377C525 360 545 345 565 333L572 345C555 360 540 372 527 380ZM438 472C445 440 460 418 475 402L500 405C480 425 465 450 460 495ZM610 360C540 405 510 460 530 520C540 535 570 540 588 546C555 520 548 470 580 425C595 400 610 385 612 360Z"/></svg> Confiance Kiosk</h1>
     <nav id="nav"></nav>
     <span class="muted" id="who"></span>
     <button class="btn ghost" id="logout">Sign out</button>

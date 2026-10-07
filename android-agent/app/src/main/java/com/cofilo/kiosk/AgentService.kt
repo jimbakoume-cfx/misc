@@ -42,11 +42,11 @@ class AgentService : Service() {
     private fun startForegroundCompat() {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL, "Kiosk agent", NotificationManager.IMPORTANCE_MIN)
+            NotificationChannel(CHANNEL, "Confiance Kiosk", NotificationManager.IMPORTANCE_MIN)
         )
         val n = Notification.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
-            .setContentTitle("Company Kiosk")
+            .setContentTitle("Confiance Kiosk")
             .setContentText("Device management active")
             .setOngoing(true)
             .build()

@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Confiance mark: C + location pin + road. Approximation of the brand artwork. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
+    android:width="96dp"
     android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <path android:fillColor="#FFFFFF" android:pathData="M0,0h108v108h-108z" />
-    <group android:translateX="-6.8" android:translateY="24" android:scaleX="0.102" android:scaleY="0.102">
+    android:viewportWidth="492"
+    android:viewportHeight="548">
+    <group android:translateX="-350">
         <path
             android:pathData="M804.4,136A227.5,227.5 0 0 0 412.7,361.2M571.2,493.7A227.5,227.5 0 0 0 804.4,408"
             android:strokeColor="#081A51"

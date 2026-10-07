@@ -2,13 +2,13 @@
 
 The dashboard + API run on **Netlify**: static dashboard (`public/`), one serverless function
 (`netlify/functions/api.mts`), **Netlify Database** (Postgres, migrations in `netlify/database/migrations/`)
-and **Netlify Blobs** (APK files). Live site: https://cofilo-kiosk-fleet.netlify.app
+and **Netlify Blobs** (APK files). Live site: https://confiance-kiosk.netlify.app
 
 ## Environment variables (Site configuration → Environment variables)
 | Variable | Purpose |
 |---|---|
 | `SESSION_SECRET` | Signs dashboard sessions. Long random string. **Required.** Changing it signs everyone out. |
-| `PUBLIC_URL` | Public HTTPS address, goes into the QR code, e.g. `https://cofilo-kiosk-fleet.netlify.app`. |
+| `PUBLIC_URL` | Public HTTPS address, goes into the QR code, e.g. `https://confiance-kiosk.netlify.app`. |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Only used to create the very first admin when the database has none. Delete `ADMIN_PASSWORD` afterwards. |
 
 ## First-time setup
@@ -17,7 +17,7 @@ and **Netlify Blobs** (APK files). Live site: https://cofilo-kiosk-fleet.netlify
 3. **Groups & apps**: create groups and tick the apps agents may open.
 4. **Add devices**: create a code and scan its QR on each factory-reset phone (see PROVISIONING.md).
 
-The first APK (`releases/kiosk-agent-1.1.0.apk`) is bundled with the deploy and installed as release #1 on first use.
+The first APK (`releases/kiosk-agent-1.1.1.apk`) is bundled with the deploy and installed as release #1 on first use.
 Upload later versions on the **App versions** page; phones update themselves.
 
 ## Deploying changes

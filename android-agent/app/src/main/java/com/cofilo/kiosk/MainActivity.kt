@@ -38,7 +38,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#0F172A"))
+            setBackgroundColor(Color.parseColor("#F4F6FA"))
         }
         setContentView(root)
         val p = Prefs(this)
@@ -95,13 +95,19 @@ class MainActivity : Activity() {
     }
 
     private fun header(p: Prefs): View {
-        val bar = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(20), dp(36), dp(20), dp(12))
         }
+        row.addView(ImageView(this).apply { setImageResource(R.drawable.ic_logo_mark) }, LinearLayout.LayoutParams(dp(40), dp(45)))
+        val col = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), 0, 0, 0)
+        }
         val title = TextView(this).apply {
-            text = if (p.deviceName.isNotEmpty()) p.deviceName else "Company Kiosk"
-            setTextColor(Color.WHITE)
+            text = if (p.deviceName.isNotEmpty()) p.deviceName else "Confiance Kiosk"
+            setTextColor(Color.parseColor("#081A51"))
             textSize = 22f
             typeface = Typeface.DEFAULT_BOLD
             // Hidden admin entry: tap the title 5 times quickly.
@@ -112,28 +118,29 @@ class MainActivity : Activity() {
                 if (adminTaps >= 5) { adminTaps = 0; askPin() }
             }
         }
-        bar.addView(title)
+        col.addView(title)
         if (p.message.isNotBlank()) {
-            bar.addView(TextView(this).apply {
+            col.addView(TextView(this).apply {
                 text = p.message
-                setTextColor(Color.parseColor("#FBBF24"))
+                setTextColor(Color.parseColor("#B45309"))
                 textSize = 14f
-                setPadding(0, dp(6), 0, 0)
+                setPadding(0, dp(4), 0, 0)
             })
         }
         if (p.released) {
-            bar.addView(TextView(this).apply {
+            col.addView(TextView(this).apply {
                 text = "Device released by administrator"
-                setTextColor(Color.parseColor("#F87171"))
+                setTextColor(Color.parseColor("#B91C1C"))
                 textSize = 13f
             })
         }
-        return bar
+        row.addView(col)
+        return row
     }
 
     private fun centerText(msg: String): View = TextView(this).apply {
         text = msg
-        setTextColor(Color.parseColor("#CBD5E1"))
+        setTextColor(Color.parseColor("#475569"))
         textSize = 16f
         gravity = Gravity.CENTER
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
@@ -152,7 +159,7 @@ class MainActivity : Activity() {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
                 setPadding(dp(8), dp(16), dp(8), dp(16))
-                setBackgroundColor(Color.parseColor("#1E293B"))
+                setBackgroundColor(Color.WHITE)
                 alpha = if (launch == null) 0.4f else 1f
             }
             val icon = ImageView(this)
@@ -160,7 +167,7 @@ class MainActivity : Activity() {
             tile.addView(icon, LinearLayout.LayoutParams(dp(72), dp(72)))
             tile.addView(TextView(this).apply {
                 text = if (launch == null) "$label\n(not installed)" else label
-                setTextColor(Color.WHITE)
+                setTextColor(Color.parseColor("#081A51"))
                 textSize = 15f
                 gravity = Gravity.CENTER
                 setPadding(0, dp(8), 0, 0)
@@ -190,20 +197,20 @@ class MainActivity : Activity() {
         val hintView = TextView(this).apply {
             text = if (p.hasEnrollConfig) "Connecting to the management server…"
             else "This device is not enrolled yet. Enter the server address and enrollment code from the dashboard."
-            setTextColor(Color.parseColor("#CBD5E1"))
+            setTextColor(Color.parseColor("#475569"))
             textSize = 15f
         }
         box.addView(hintView)
         if (!p.hasEnrollConfig) {
             val url = EditText(this).apply {
                 hint = "https://dashboard.example.com"
-                setHintTextColor(Color.GRAY); setTextColor(Color.WHITE)
+                setHintTextColor(Color.GRAY); setTextColor(Color.parseColor("#081A51"))
                 inputType = InputType.TYPE_TEXT_VARIATION_URI
                 setText(p.serverUrl)
             }
             val token = EditText(this).apply {
                 hint = "Enrollment code"
-                setHintTextColor(Color.GRAY); setTextColor(Color.WHITE)
+                setHintTextColor(Color.GRAY); setTextColor(Color.parseColor("#081A51"))
             }
             val btn = Button(this).apply {
                 text = "Enroll"

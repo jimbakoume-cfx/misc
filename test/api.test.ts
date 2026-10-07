@@ -134,7 +134,7 @@ test("commands are delivered once and acked", async () => {
 test("release upload, provisioning QR payload, auto-update command", async () => {
   assert.equal((await call("GET", `/api/provisioning/${enrollToken}`, { token: admin })).status, 409);
   const apk = new Uint8Array(5000).fill(7);
-  const up = await call("PUT", "/api/releases?versionCode=2&versionName=1.1.0&certSha256=abcDEF_-123", { token: admin, raw: apk });
+  const up = await call("PUT", "/api/releases?versionCode=2&versionName=1.1.1&certSha256=abcDEF_-123", { token: admin, raw: apk });
   assert.equal(up.status, 200);
   const dl = await call("GET", "/apk/latest.apk");
   assert.equal(dl.status, 200);
@@ -188,7 +188,7 @@ test("bundled seed release is installed on first request and used for provisioni
   const s = await makeApp({ seed });
   const rels = await s.call("GET", "/api/releases", { token: s.admin });
   assert.equal(rels.body.length, 1);
-  assert.equal(rels.body[0].versionName, "1.1.0");
+  assert.equal(rels.body[0].versionName, "1.1.1");
   assert.equal(rels.body[0].certSha256, meta.certSha256);
   const dl = await s.call("GET", "/apk/latest.apk");
   assert.equal(dl.buf!.byteLength, buf.byteLength);

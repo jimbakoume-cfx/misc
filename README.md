@@ -26,4 +26,4 @@ cd android-agent
 Requires JDK 17+ and the Android SDK (platform 34).
 
 ## Dashboard
-Live at https://cofilo-kiosk-fleet.netlify.app (see `docs/DEPLOY.md`). Tests: `npm ci && npm test`.
+Live at https://confiance-kiosk.netlify.app (see `docs/DEPLOY.md`). Tests: `npm ci && npm test`.
