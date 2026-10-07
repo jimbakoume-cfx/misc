@@ -318,3 +318,18 @@ test("repeated failed sign-ins are recorded with the address", async () => {
   const rows = (await s.call("GET", "/api/audit", { token: s.admin })).body;
   assert.ok(rows.some((r: any) => r.action === "login-failed" && r.detail.includes("203.0.113.9")));
 });
+
+test("re-uploading the same APK corrects its label instead of adding a duplicate", async () => {
+  const s = await makeApp();
+  const apk = new Uint8Array(6000).fill(9);
+  await s.call("PUT", "/api/releases?versionCode=7&versionName=1.2.0&certSha256=abc", { token: s.admin, raw: apk });
+  assert.match((await s.call("GET", "/apk/latest.apk")).res.headers.get("content-disposition") ?? "", /kiosk-1\.2\.0\.apk/);
+  await s.call("PUT", "/api/releases?versionCode=7&versionName=1.2.1&certSha256=abc", { token: s.admin, raw: apk });
+  const rels = (await s.call("GET", "/api/releases", { token: s.admin })).body;
+  assert.equal(rels.length, 1);
+  assert.equal(rels[0].versionName, "1.2.1");
+  assert.match((await s.call("GET", "/apk/latest.apk")).res.headers.get("content-disposition") ?? "", /kiosk-1\.2\.1\.apk/);
+  // a genuinely different file is still a new release
+  await s.call("PUT", "/api/releases?versionCode=8&versionName=1.3.0", { token: s.admin, raw: new Uint8Array(6000).fill(8) });
+  assert.equal((await s.call("GET", "/api/releases", { token: s.admin })).body.length, 2);
+});

@@ -99,6 +99,11 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
   async function storeRelease(apk: ArrayBuffer, versionCode: number, versionName: string, cert: string) {
     const digest = sha256Buf(apk);
     await blobs.set(digest, apk);
+    // Uploading the same file again corrects its label instead of adding a duplicate row.
+    if (await get("SELECT 1 x FROM releases WHERE sha256=?", digest)) {
+      await run("UPDATE releases SET version_code=?, version_name=?, cert_sha256=? WHERE sha256=?", versionCode, versionName, cert, digest);
+      return digest;
+    }
     await run("INSERT INTO releases(version_code,version_name,sha256,cert_sha256,size,created_at) VALUES(?,?,?,?,?,?)",
       versionCode, versionName, digest, cert, apk.byteLength, now());
     return digest;
