@@ -1,0 +1,4 @@
+Package:            com.cofilo.kiosk
+Admin component:    com.cofilo.kiosk/.AdminReceiver
+Version:            1.0.0 (code 1)
+Cert SHA-256 (QR):  xSBCO6TSizlRm1mu45ZvzQ7748VQcVBEo81rA8fTi_4
