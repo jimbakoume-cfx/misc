@@ -4,7 +4,7 @@
 name: Publish dashboard to GitHub Pages
 on:
   push:
-    branches: [main, claude/sweet-goodall-gkwgdw]
+    branches: [main, claude/h2-kiosk-mode-app-8qsgjt, claude/sweet-goodall-gkwgdw]
     paths: ["public/**", ".github/workflows/pages.yml"]
   workflow_dispatch:
 permissions:
