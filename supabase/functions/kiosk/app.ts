@@ -260,7 +260,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
       lastCrash: status.lastCrash || "", lastError: status.lastError || "", live: !!status.pushConnected,
       imei: d.imei || status.imei || "", simOperator: status.simOperator ?? "", phoneNumber: status.phoneNumber ?? "",
       signal: status.signal ?? null, securityPatch: d.security_patch || status.securityPatch || "",
-      usageAccess: !!status.usageAccess, lang: status.lang ?? "",
+      usageAccess: !!status.usageAccess, lang: status.lang ?? "", autoBlocker: status.autoBlocker ?? "",
       lostMode: !!d.lost_mode, lostOnPhone: !!status.lostMode, problem: d.problem || "", problemAt: d.problem_at ?? null,
       location: json(d.last_location, null),
       dataMonth: usage ? usage.get(Number(d.id)) ?? { mobileBytes: 0, wifiBytes: 0 } : undefined,

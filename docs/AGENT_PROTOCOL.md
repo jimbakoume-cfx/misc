@@ -47,7 +47,8 @@ Body (REST form; the fallback form is identical minus `token`):
     "freeStorageMb": 48210, "agentVersion": "1.4.0", "agentVersionCode": 13,
     "deviceOwner": true, "released": false, "lastCrash": "", "pushConnected": true, "uptimeMin": 1440,
     "securityPatch": "2026-09-01", "imei": "…", "simSerial": "…", "simOperator": "MTN Cameroon",
-    "phoneNumber": "+2376…", "signal": 3, "usageAccess": true, "lostMode": false, "lang": "fr"
+    "phoneNumber": "+2376…", "signal": 3, "usageAccess": true, "lostMode": false, "lang": "fr",
+    "autoBlocker": "off (rampart_main_switch_enabled=0)"
   },
   "acks": [ { "id": "41", "status": "done|failed", "error": "" } ],
   "apps": [ { "pkg": "com.confiance.driver", "label": "Confiance Driver", "versionCode": 120 } ],
