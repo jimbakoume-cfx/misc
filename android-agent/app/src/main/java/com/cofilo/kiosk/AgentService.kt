@@ -11,6 +11,7 @@ import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.RingtoneManager
+import android.database.ContentObserver
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -58,6 +59,7 @@ class AgentService : Service() {
             running = true
             worker = thread(name = "kiosk-agent", isDaemon = true) { loop() }
             instance = this
+            watchAutoBlocker()
         }
         return START_STICKY
     }
@@ -68,6 +70,7 @@ class AgentService : Service() {
         push.stop()
         main.post { stopRinging() }
         if (instance === this) instance = null
+        runCatching { contentResolver.unregisterContentObserver(autoBlockerObserver) }
         super.onDestroy()
     }
 
@@ -117,8 +120,23 @@ class AgentService : Service() {
             if (!prefs.hasEnrollConfig) return
             enroll(prefs)
         }
+        // Samsung Auto Blocker is written off before every check-in, so the dashboard always sees the enforced state.
+        runCatching { Policy.disableAutoBlocker(this) }
         if (prefs.enrolled) heartbeat(prefs)
         if (prefs.enrolled) maybeSelfUpdate(prefs)
+    }
+
+    /** Re-writes Auto Blocker off the moment one of its switches changes (someone turned it on in Settings). */
+    private val autoBlockerObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+        override fun onChange(selfChange: Boolean) { runCatching { Policy.disableAutoBlocker(this@AgentService) } }
+    }
+    private fun watchAutoBlocker() {
+        runCatching {
+            for (sw in Policy.autoBlockerSwitches(this)) {
+                val uri = if (sw.table == "secure") Settings.Secure.getUriFor(sw.key) else Settings.Global.getUriFor(sw.key)
+                contentResolver.registerContentObserver(uri, false, autoBlockerObserver)
+            }
+        }
     }
 
     /**

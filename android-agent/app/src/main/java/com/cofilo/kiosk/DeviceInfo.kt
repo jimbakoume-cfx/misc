@@ -127,6 +127,7 @@ object DeviceInfo {
             .put("phoneNumber", phoneNumber(ctx))
             .put("signal", signalLevel(ctx))
             .put("usageAccess", hasUsageAccess(ctx))
+            .put("autoBlocker", runCatching { Policy.autoBlockerStatus(ctx) }.getOrDefault(""))
             .put("lostMode", prefs.lostMode)
             .put("lang", prefs.lang.ifEmpty { Locale.getDefault().language })
     }

@@ -421,6 +421,7 @@ async function openDevice(id) {
         ${d.phoneNumber ? kv(t("d.k.sim"), esc(d.phoneNumber)) : ""}
         ${kv(t("d.k.location"), d.location ? `<a href="https://www.openstreetmap.org/?mlat=${d.location.lat}&mlon=${d.location.lon}#map=16/${d.location.lat}/${d.location.lon}" target="_blank" rel="noopener">${ic("pin")} ${t("d.k.location.map")}</a> <span class="muted sm">· ${ago(d.location.at)}${d.location.accuracy ? ` · ±${Math.round(d.location.accuracy)} m` : ""}</span>` : `<span class="muted">—</span>`)}
         ${kv(t("d.k.usage"), d.usageAccess ? `<span class="pill ok plain">${t("common.on")}</span>` : `<span class="muted">${t("d.k.usage.no")}</span>`)}
+        ${d.autoBlocker ? kv(t("d.k.autoblocker"), /^off/.test(d.autoBlocker) ? `<span class="pill ok plain">${t("d.k.autoblocker.off")}</span>` : /^not found/.test(d.autoBlocker) ? `<span class="muted">${t("d.k.autoblocker.none")}</span>` : `<span class="pill warn plain">${t("d.k.autoblocker.on")}</span> <span class="muted sm">· ${esc(d.autoBlocker)}</span>`) : ""}
         ${kv(t("d.k.enrolled"), when(d.enrolledAt))}
       </dl>
 

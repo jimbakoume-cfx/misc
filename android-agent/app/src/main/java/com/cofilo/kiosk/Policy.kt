@@ -230,20 +230,67 @@ object Policy {
         ctx.sendBroadcast(Intent(ACTION_STATE_CHANGED).setPackage(ctx.packageName))
     }
 
+    /** One Samsung Auto Blocker switch found on this phone: which settings table, its name and current value. */
+    data class Switch(val table: String, val key: String, val value: String) {
+        val on get() = value == "1" || value.equals("true", true)
+    }
+
     /**
-     * Samsung Auto Blocker ("rampart") refuses every install that does not come from a store, our own updates included.
-     * When the USB setup granted WRITE_SECURE_SETTINGS, switch it off; only settings that exist on this phone are
-     * touched, so other brands are unaffected. Returns true when a switch was changed.
+     * Samsung Auto Blocker ("rampart") switches present on this phone: the names known from One UI 6/7 plus every
+     * secure/global setting whose name mentions rampart or auto-block and looks like a switch (…enabled / …switch /
+     * block_…). The settings tables are readable by any app, so the list is exact for the phone at hand.
      */
-    fun disableAutoBlocker(ctx: Context): Boolean {
-        var changed = false
-        runCatching {
-            if (ctx.checkSelfPermission(Manifest.permission.WRITE_SECURE_SETTINGS) != PackageManager.PERMISSION_GRANTED) return false
-            for (key in AUTO_BLOCKER_KEYS) {
-                if (Settings.Secure.getInt(ctx.contentResolver, key, -1) > 0 && Settings.Secure.putInt(ctx.contentResolver, key, 0)) changed = true
-                if (Settings.Global.getInt(ctx.contentResolver, key, -1) > 0 && Settings.Global.putInt(ctx.contentResolver, key, 0)) changed = true
+    fun autoBlockerSwitches(ctx: Context): List<Switch> {
+        val out = linkedMapOf<String, Switch>()
+        for (table in listOf("secure", "global")) {
+            val uri = if (table == "secure") Settings.Secure.CONTENT_URI else Settings.Global.CONTENT_URI
+            runCatching {
+                ctx.contentResolver.query(uri, arrayOf("name", "value"), null, null, null)?.use { c ->
+                    while (c.moveToNext()) {
+                        val name = c.getString(0) ?: continue
+                        val looksLikeSwitch = name in AUTO_BLOCKER_KEYS ||
+                            (Regex("rampart|auto_?block", RegexOption.IGNORE_CASE).containsMatchIn(name) && Regex("enabled|switch|^block_", RegexOption.IGNORE_CASE).containsMatchIn(name))
+                        if (looksLikeSwitch) out["$table/$name"] = Switch(table, name, c.getString(1) ?: "")
+                    }
+                }
             }
         }
+        return out.values.toList()
+    }
+
+    fun canWriteSecureSettings(ctx: Context) =
+        ctx.checkSelfPermission(Manifest.permission.WRITE_SECURE_SETTINGS) == PackageManager.PERMISSION_GRANTED
+
+    /**
+     * Samsung Auto Blocker refuses every install that does not come from a store, our own updates included. When the
+     * USB setup granted WRITE_SECURE_SETTINGS, every switch found on is written off (other brands have none, so they
+     * are unaffected). Returns true when a switch was changed.
+     */
+    fun disableAutoBlocker(ctx: Context): Boolean {
+        if (!canWriteSecureSettings(ctx)) return false
+        var changed = false
+        for (sw in autoBlockerSwitches(ctx)) {
+            if (!sw.on) continue
+            val ok = runCatching {
+                if (sw.table == "secure") Settings.Secure.putInt(ctx.contentResolver, sw.key, 0) else Settings.Global.putInt(ctx.contentResolver, sw.key, 0)
+            }.getOrDefault(false)
+            if (ok) changed = true
+        }
         return changed
+    }
+
+    /**
+     * For the dashboard: "off" (every switch off), "on" (a switch is on and the app may not write it), "not found"
+     * (no Samsung switch on this phone), followed by the switches seen, e.g. "off (rampart_main_switch_enabled=0)".
+     */
+    fun autoBlockerStatus(ctx: Context): String {
+        val sws = autoBlockerSwitches(ctx)
+        val state = when {
+            sws.isEmpty() -> "not found"
+            sws.none { it.on } -> "off"
+            canWriteSecureSettings(ctx) -> "on, switching off"
+            else -> "on, no permission"
+        }
+        return if (sws.isEmpty()) state else "$state (" + sws.joinToString(", ") { "${it.key}=${it.value}" }.take(300) + ")"
     }
 }
