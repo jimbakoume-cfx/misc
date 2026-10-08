@@ -249,7 +249,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
   const view = async (d: Row, full = false, usage?: Map<number, { mobileBytes: number; wifiBytes: number }>) => {
     const status = json(d.status, {});
     const out: Row = {
-      id: d.id, name: d.name, groupId: d.group_id, model: d.model, osVersion: d.os_version,
+      id: d.id, name: d.name, groupId: d.group_id, model: d.model || status.model || "", osVersion: d.os_version || status.osVersion || "",
       serial: d.serial, lastSeen: d.last_seen, state: statusOf(d), enrolledAt: d.enrolled_at,
       driverName: d.driver_name ?? "", driverPhone: d.driver_phone ?? "", vehicle: d.vehicle ?? "",
       battery: status.battery ?? null, charging: !!status.charging, network: status.network ?? null,
@@ -257,7 +257,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
       deviceOwner: !!status.deviceOwner, released: !!status.released,
       freeStorageMb: status.freeStorageMb ?? null, uptimeMin: status.uptimeMin ?? null, notes: d.notes,
       hasOverride: d.allowed_override != null, removing: !!d.remove_pending, approved: !!d.approved,
-      lastCrash: status.lastCrash || "", live: !!status.pushConnected,
+      lastCrash: status.lastCrash || "", lastError: status.lastError || "", live: !!status.pushConnected,
       imei: d.imei || status.imei || "", simOperator: status.simOperator ?? "", phoneNumber: status.phoneNumber ?? "",
       signal: status.signal ?? null, securityPatch: d.security_patch || status.securityPatch || "",
       usageAccess: !!status.usageAccess, lang: status.lang ?? "",

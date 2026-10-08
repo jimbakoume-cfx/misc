@@ -109,6 +109,8 @@ object DeviceInfo {
             .put("charging", plugged)
             .put("network", networkType(ctx))
             .put("freeStorageMb", stat.availableBytes / (1024 * 1024))
+            .put("model", (android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL).trim())
+            .put("osVersion", android.os.Build.VERSION.RELEASE ?: "")
             .put("agentVersion", pkgInfo.versionName)
             .put("agentVersionCode", pkgInfo.longVersionCode)
             .put("deviceOwner", dpm.isDeviceOwnerApp(ctx.packageName))
