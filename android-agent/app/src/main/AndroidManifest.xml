@@ -30,6 +30,9 @@
     <!-- Lets the agent list the phone's apps for the dashboard's allowed-apps catalogue. The <queries> filter alone
          left the list empty on Galaxy phones, so the device-management permission is declared as well. -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission" />
+    <!-- Lists the app under Settings > Install unknown apps, so a person can authorise it as an update source on phones
+         whose vendor blocks installs from unlisted sources (Samsung Auto Blocker). Device-owner installs need no toggle. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />

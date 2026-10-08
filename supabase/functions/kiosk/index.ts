@@ -12,8 +12,28 @@ const serviceKey = env("SUPABASE_SERVICE_ROLE_KEY") || jsonDefault(env("SUPABASE
 const anonKey = env("SUPABASE_ANON_KEY") || jsonDefault(env("SUPABASE_PUBLISHABLE_KEYS"));
 const publicUrl = env("PUBLIC_URL") || `${supabaseUrl}/functions/v1/kiosk`;
 
-// Transaction-mode pooler: no prepared statements, few connections per isolate.
-const sql = postgres(env("SUPABASE_DB_URL"), { prepare: false, max: 2, idle_timeout: 90, connect_timeout: 10 });
+// SUPABASE_DB_URL is the *direct* connection; each isolate keeps at most two, released after 20 s idle, so a burst of
+// dashboard requests stays well under the database's ~60 slots (the dashboard also loads pages one at a time).
+// Optional: DB_POOLER_HOST (e.g. aws-1-eu-west-3.pooler.supabase.com) routes through the transaction-mode pooler
+// instead; it is probed once per isolate and the direct connection is kept when it cannot be reached. Off by default:
+// in a test the pooler answered single-row endpoints but never returned for the multi-query overview/devices ones.
+const opts = { prepare: false, max: 2, idle_timeout: 20, connect_timeout: 10 } as const;
+const directUrl = env("SUPABASE_DB_URL");
+const poolerUrl = (() => {
+  try {
+    const ref = /^https:\/\/([a-z0-9]+)\./.exec(supabaseUrl)?.[1];
+    const host = env("DB_POOLER_HOST");
+    if (!ref || !directUrl || !host) return "";
+    const u = new URL(directUrl); u.username = `postgres.${ref}`; u.hostname = host; u.port = "6543"; return u.toString();
+  } catch { return ""; }
+})();
+let sql = postgres(directUrl, opts);
+const dbReady = (async () => {
+  if (!poolerUrl) return;
+  const c = postgres(poolerUrl, { ...opts, connect_timeout: 5 });
+  try { await c`select 1`; sql = c; console.log("db: pooler", new URL(poolerUrl).hostname); }
+  catch (e) { console.warn("db: pooler unavailable, using the direct connection:", (e as Error).message); await c.end({ timeout: 1 }).catch(() => {}); }
+})();
 
 // Two public buckets: "apk" for app files (phones download them straight from the CDN) and "web" for the dashboard
 // files, which this function serves with its security headers. Both are created by the migrations.
@@ -53,7 +73,7 @@ const assets = {
 };
 
 const app = createApp({
-  db: { query: (text, params) => sql.unsafe(text, params as any[]) as unknown as Promise<Record<string, any>[]> },
+  db: { query: async (text, params) => { await dbReady; return await (sql.unsafe(text, params as any[]) as unknown as Promise<Record<string, any>[]>); } },
   blobs: storage,
   assets,
   env: {
