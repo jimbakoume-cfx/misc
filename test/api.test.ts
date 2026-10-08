@@ -2,18 +2,20 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
-import { createApp, type Seed } from "../netlify/functions/lib/app.ts";
-import { totp } from "../netlify/functions/lib/auth.ts";
+import { createApp, type Seed } from "../supabase/functions/kiosk/app.ts";
+import { totp } from "../supabase/functions/kiosk/auth.ts";
 
 /** Runs the real function code against an in-memory Postgres (PGlite) and an in-memory blob store. */
 async function makeApp(opts: { seed?: Seed; env?: Record<string, string>; fetch?: typeof fetch } = {}) {
   const pg = new PGlite();
-  const dir = new URL("../netlify/database/migrations/", import.meta.url);
-  for (const m of readdirSync(dir).sort()) await pg.exec(readFileSync(new URL(`${m}/migration.sql`, dir), "utf8"));
+  const dir = new URL("../supabase/migrations/", import.meta.url);
+  for (const m of readdirSync(dir).sort()) await pg.exec(readFileSync(new URL(m, dir), "utf8"));
   const blobs = new Map<string, ArrayBuffer>();
+  const pub = new URL("../public/", import.meta.url);
   const handler = createApp({
     db: { query: async (sql, params) => (await pg.query(sql, params as any[])).rows as any[] },
     blobs: { get: async (k) => blobs.get(k) ?? null, set: async (k, v) => { blobs.set(k, v); } },
+    assets: { get: (path) => { try { return { type: path.endsWith(".html") ? "text/html" : "text/javascript", body: readFileSync(new URL(`.${path}`, pub)) }; } catch { return null; } } },
     env: { SESSION_SECRET: "test-secret", ADMIN_EMAIL: "Boss@Example.com", ADMIN_PASSWORD: "correct-horse-battery", PUBLIC_URL: "https://kiosk.example.com", ...(opts.env ?? {}) },
     fetch: opts.fetch,
     loadSeed: opts.seed ? async () => opts.seed! : undefined,
@@ -34,7 +36,11 @@ async function makeApp(opts: { seed?: Seed; env?: Record<string, string>; fetch?
     return { status: res.status, body: isJson ? await res.json() : null, buf, res };
   };
   const login = await call("POST", "/api/login", { body: { email: "boss@example.com", password: "correct-horse-battery" } });
-  return { call, admin: login.body.token as string, login };
+  const callCron = async () => {
+    const key = (await pg.query("SELECT value FROM settings WHERE key='cron_key'")).rows[0] as any;
+    return call("POST", "/api/cron", { headers: { "x-cron-key": key.value } });
+  };
+  return { call, admin: login.body.token as string, login, callCron };
 }
 
 const { call, admin, login } = await makeApp();
@@ -119,7 +125,10 @@ test("heartbeat returns group policy with sanitised apps, PIN hash and interval"
   assert.equal(hb.status, 200);
   assert.deepEqual(hb.body.policy.allowedApps, [{ pkg: "com.company.crm", label: "CRM" }]);
   assert.equal(hb.body.policy.message, "Welcome");
-  assert.equal(hb.body.policy.intervalSec, 300);
+  assert.equal(hb.body.policy.intervalSec, 600);
+  assert.equal(hb.body.policy.pushIntervalSec, 1800);
+  assert.equal(hb.body.policy.driverWifi, true);
+  assert.deepEqual(hb.body.policy.installApps, []);
   assert.match(hb.body.policy.pinHash, /^pbkdf2\$120000\$[^$]+\$[0-9a-f]{64}$/);
   // PIN can be switched off: phones then get no PIN at all (dashboard-only release)
   await call("PUT", "/api/settings", { token: admin, body: { pinEnabled: false } });
@@ -190,7 +199,7 @@ test("release upload, provisioning QR payload, auto-update command", async () =>
   assert.equal(prov.status, 200);
   const p = prov.body.payload;
   assert.equal(p["android.app.extra.PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME"], "com.cofilo.kiosk/.AdminReceiver");
-  assert.equal(p["android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION"], "https://kiosk.example.com/kiosk-agent.apk");
+  assert.equal(p["android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION"], "https://kiosk.example.com/apk/latest.apk");
   assert.equal(p["android.app.extra.PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM"], "abcDEF_-123");
   assert.deepEqual(p["android.app.extra.PROVISIONING_ADMIN_EXTRAS_BUNDLE"], { server_url: "https://kiosk.example.com", enroll_token: enrollToken });
   assert.match(prov.body.qr, /^data:image\/png;base64,/);
@@ -345,7 +354,9 @@ test("instant push: phones get a private channel and are pinged when something c
   const e = (await s.call("POST", "/api/device/enroll", { body: { enrollToken: tok, serial: "P1", androidId: "P1", model: "m", osVersion: "o" } })).body;
   const hb = await s.call("POST", "/api/device/heartbeat", { token: e.deviceToken, body: { status: { deviceOwner: true } } });
   const push = hb.body.policy.push;
-  assert.equal(push.url, "https://proj.supabase.co/");
+  assert.equal(e.rest.url, "https://proj.supabase.co/rest/v1");
+  assert.equal(hb.body.policy.rest.key, "sb_publishable_test");
+  assert.equal(push.url, "https://proj.supabase.co");
   assert.equal(push.key, "sb_publishable_test");
   assert.match(push.channel, /^dev-[A-Za-z0-9_-]{20,}$/);
   const hb2 = await s.call("POST", "/api/device/heartbeat", { token: e.deviceToken, body: { status: { deviceOwner: true } } });
@@ -406,4 +417,160 @@ test("setup diagnostics: phones can report setup steps and downloads are noted, 
   assert.equal(rows.filter((r: any) => r.action === "apk-download").length, 1);                 // two downloads, one note
   assert.ok(rows.some((r: any) => r.action === "setup:get-provisioning-mode" && r.detail.includes("allowed=[1,2]")));
   assert.ok(rows.some((r: any) => r.action === "setup:xscript" && r.detail.length === 300));      // sanitised and capped
+});
+
+// ---------- v2: data usage, alerts, lost mode, managed apps, driver reports ----------
+async function enrolled(s: Awaited<ReturnType<typeof makeApp>>, label = "V") {
+  await s.call("PUT", "/api/settings", { token: s.admin, body: { requireApproval: false } });
+  const tok = (await s.call("POST", "/api/enroll-tokens", { token: s.admin, body: { label, maxUses: 5 } })).body.token;
+  const e = (await s.call("POST", "/api/device/enroll", { body: { enrollToken: tok, serial: `${label}1`, androidId: `${label}1`, model: "samsung SM-A175F", osVersion: "Android 15", imei: "35000000", simSerial: "sim-A" } })).body;
+  await s.call("POST", "/api/device/heartbeat", { token: e.deviceToken, body: { status: { deviceOwner: true, battery: 80 } } });
+  return e;
+}
+
+test("data usage: deltas add up per day, month totals and the budget alert", async () => {
+  const s = await makeApp();
+  const e = await enrolled(s, "U");
+  await s.call("PUT", "/api/settings", { token: s.admin, body: { dataBudgetMb: 100 } });
+  const hb = async (mobile: number, wifi: number, appUsage?: any) =>
+    s.call("POST", "/api/device/heartbeat", { token: e.deviceToken, body: { status: { deviceOwner: true, battery: 80 }, usage: { mobileBytes: mobile, wifiBytes: wifi, ...(appUsage ? { appUsage } : {}) } } });
+  assert.equal((await hb(30 * 1048576, 5 * 1048576, { "com.confiance.driver": 120 })).body.policy.dataBudgetMb, 100);
+  await hb(40 * 1048576, 1 * 1048576);
+  const u = await s.call("GET", `/api/devices/${e.id}/usage`, { token: s.admin });
+  assert.equal(u.status, 200);
+  assert.equal(u.body.days.length, 1);
+  assert.equal(u.body.days[0].mobileBytes, 70 * 1048576);
+  assert.equal(u.body.days[0].wifiBytes, 6 * 1048576);
+  assert.deepEqual(u.body.days[0].appUsage, { "com.confiance.driver": 120 });   // kept when a later report has none
+  assert.equal(u.body.month.mobileBytes, 70 * 1048576);
+  const list = await s.call("GET", "/api/devices", { token: s.admin });
+  assert.equal(list.body[0].dataMonth.mobileBytes, 70 * 1048576);
+  assert.equal(list.body[0].imei, "35000000");
+  // over budget -> one active alert, visible in the overview
+  await hb(50 * 1048576, 0);
+  const ov = await s.call("GET", "/api/overview", { token: s.admin });
+  assert.equal(ov.body.data.mobileBytes, 120 * 1048576);
+  assert.equal(ov.body.data.top[0].id, e.id);
+  const budgetAlerts = ov.body.alerts.filter((a: any) => a.kind === "data_budget");
+  assert.equal(budgetAlerts.length, 1);
+  await hb(1, 0);
+  assert.equal((await s.call("GET", "/api/alerts", { token: s.admin })).body.filter((a: any) => a.kind === "data_budget").length, 1); // not duplicated
+  const fleet = await s.call("GET", "/api/usage", { token: s.admin });
+  assert.equal(fleet.body.month[0].mobileBytes, 120 * 1048576 + 1);
+  // dismiss
+  await s.call("POST", `/api/alerts/${budgetAlerts[0].id}/dismiss`, { token: s.admin });
+  assert.equal((await s.call("GET", "/api/alerts", { token: s.admin })).body.length, 0);
+});
+
+test("alerts: SIM change, battery, unmanaged, offline sweep, and the cron endpoint e-mails a digest", async () => {
+  const sent: any[] = [];
+  const fakeFetch = (async (url: string, init: any) => { sent.push({ url, body: JSON.parse(init.body) }); return new Response("{}", { status: 200 }); }) as unknown as typeof fetch;
+  const s = await makeApp({ env: { RESEND_API_KEY: "re_test" }, fetch: fakeFetch });
+  const e = await enrolled(s, "A");
+  await s.call("POST", "/api/device/heartbeat", { token: e.deviceToken, body: { status: { deviceOwner: true, battery: 8, charging: false, simSerial: "sim-B", simOperator: "MTN" } } });
+  let kinds = (await s.call("GET", "/api/alerts", { token: s.admin })).body.map((a: any) => a.kind).sort();
+  assert.deepEqual(kinds, ["battery", "sim_changed"]);
+  await s.call("POST", "/api/device/heartbeat", { token: e.deviceToken, body: { status: { deviceOwner: false, battery: 90 } } });
+  kinds = (await s.call("GET", "/api/alerts", { token: s.admin })).body.map((a: any) => a.kind).sort();
+  assert.deepEqual(kinds, ["sim_changed", "unmanaged"]);   // battery cleared, unmanaged raised
+  // offline: push last_seen into the past and sweep through the cron endpoint (needs the key)
+  await s.call("PUT", "/api/settings", { token: s.admin, body: { offlineAlertHours: 1, alertEmails: "ops@confiance-app.com" } });
+  assert.equal((await s.call("POST", "/api/cron")).status, 401);
+  const res = await s.callCron();
+  assert.equal(res.status, 200);
+  assert.equal(res.body.sent, 2);                       // sim_changed + unmanaged mailed once
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].url, "https://api.resend.com/emails");
+  assert.deepEqual(sent[0].body.to, ["ops@confiance-app.com"]);
+  assert.match(sent[0].body.text, /SIM card changed/);
+  assert.equal((await s.callCron()).body.sent, 0);     // nothing new
+});
+
+test("lost mode, ring, locate, wipe and the driver problem report", async () => {
+  const s = await makeApp();
+  const e = await enrolled(s, "L");
+  assert.equal((await s.call("POST", `/api/devices/${e.id}/commands`, { token: s.admin, body: { type: "lost", message: "Rapportez ce téléphone", phone: "+237600000000" } })).status, 200);
+  let hb = await s.call("POST", "/api/device/heartbeat", { token: e.deviceToken, body: { status: { deviceOwner: true } } });
+  assert.equal(hb.body.policy.lostMode.on, true);
+  assert.equal(hb.body.policy.lostMode.phone, "+237600000000");
+  assert.deepEqual(hb.body.commands.map((c: any) => c.type), ["lost"]);
+  assert.equal(hb.body.commands[0].payload.message, "Rapportez ce téléphone");
+  assert.equal((await s.call("GET", `/api/devices/${e.id}`, { token: s.admin })).body.lostMode, true);
+  assert.equal((await s.call("GET", "/api/overview", { token: s.admin })).body.lost, 1);
+  await s.call("POST", `/api/devices/${e.id}/commands`, { token: s.admin, body: { type: "found" } });
+  await s.call("POST", `/api/devices/${e.id}/commands`, { token: s.admin, body: { type: "ring", seconds: 10 } });
+  await s.call("POST", `/api/devices/${e.id}/commands`, { token: s.admin, body: { type: "locate" } });
+  hb = await s.call("POST", "/api/device/heartbeat", { token: e.deviceToken, body: { status: { deviceOwner: true }, location: { lat: 3.87, lon: 11.52, accuracy: 20, at: 1 } } });
+  assert.equal(hb.body.policy.lostMode.on, false);
+  assert.deepEqual(hb.body.commands.map((c: any) => c.type), ["found", "ring", "locate"]);
+  assert.equal(hb.body.commands[1].payload.seconds, 10);
+  assert.deepEqual((await s.call("GET", `/api/devices/${e.id}`, { token: s.admin })).body.location, { lat: 3.87, lon: 11.52, accuracy: 20, at: 1 });
+  // wipe is delivered once and marked done without an ack
+  await s.call("POST", `/api/devices/${e.id}/commands`, { token: s.admin, body: { type: "wipe" } });
+  hb = await s.call("POST", "/api/device/heartbeat", { token: e.deviceToken, body: { status: { deviceOwner: true } } });
+  assert.deepEqual(hb.body.commands.map((c: any) => c.type), ["wipe"]);
+  const det = await s.call("GET", `/api/devices/${e.id}`, { token: s.admin });
+  assert.equal(det.body.commands.find((c: any) => c.type === "wipe").status, "done");
+  // the driver reports a problem -> alert + flag; the admin clears it
+  const rep = await s.call("POST", "/api/device/report", { token: e.deviceToken, body: { kind: "problem", text: "L'application se ferme" } });
+  assert.equal(rep.status, 200);
+  assert.equal((await s.call("POST", "/api/device/report", { token: e.deviceToken, body: { text: "again" } })).status, 429);
+  assert.equal((await s.call("GET", `/api/devices/${e.id}`, { token: s.admin })).body.problem, "L'application se ferme");
+  assert.ok((await s.call("GET", "/api/alerts", { token: s.admin })).body.some((a: any) => a.kind === "problem"));
+  await s.call("POST", `/api/devices/${e.id}/problem/clear`, { token: s.admin });
+  assert.equal((await s.call("GET", `/api/devices/${e.id}`, { token: s.admin })).body.problem, "");
+  assert.ok(!(await s.call("GET", "/api/alerts", { token: s.admin })).body.some((a: any) => a.kind === "problem"));
+  assert.equal((await s.call("POST", "/api/device/report", { body: { token: "nope", text: "x" } })).status, 401);
+});
+
+test("managed apps: uploaded APKs reach phones whose allowed list has the package", async () => {
+  const s = await makeApp();
+  const e = await enrolled(s, "M");
+  const g = (await s.call("POST", "/api/groups", { token: s.admin, body: { name: "Drivers", allowedApps: [{ pkg: "com.confiance.driver", label: "Confiance Driver" }] } })).body.id;
+  await s.call("PATCH", `/api/devices/${e.id}`, { token: s.admin, body: { groupId: g, driverName: "Aminatou Njoya", vehicle: "Prado · LT 452 AB", driverPhone: "+237 6 99" } });
+  const up = await s.call("PUT", "/api/managed-apps?pkg=com.confiance.driver&versionCode=120&versionName=2.3.0&label=Confiance%20Driver", { token: s.admin, raw: new Uint8Array(4000).fill(3) });
+  assert.equal(up.status, 200);
+  assert.equal(up.body.devices, 1);
+  const hb = await s.call("POST", "/api/device/heartbeat", { token: e.deviceToken, body: { status: { deviceOwner: true }, apps: [{ pkg: "com.confiance.driver", label: "Confiance Driver", versionCode: 100 }] } });
+  assert.equal(hb.body.policy.driverName, "Aminatou Njoya");
+  assert.equal(hb.body.policy.vehicle, "Prado · LT 452 AB");
+  assert.equal(hb.body.policy.installApps.length, 1);
+  assert.equal(hb.body.policy.installApps[0].versionCode, 120);
+  assert.match(hb.body.policy.installApps[0].url, /^https:\/\/kiosk\.example\.com\/apk\/[0-9a-f]{64}\.apk$/);
+  assert.equal((await s.call("GET", `/apk/${up.body.sha256}.apk`)).status, 200);
+  // explicit install command carries the same payload
+  const apps = (await s.call("GET", "/api/managed-apps", { token: s.admin })).body;
+  assert.equal(apps.length, 1);
+  await s.call("POST", `/api/devices/${e.id}/commands`, { token: s.admin, body: { type: "install", appId: apps[0].id } });
+  const hb2 = await s.call("POST", "/api/device/heartbeat", { token: e.deviceToken, body: { status: { deviceOwner: true } } });
+  assert.equal(hb2.body.commands[0].type, "install");
+  assert.equal(hb2.body.commands[0].payload.pkg, "com.confiance.driver");
+  assert.ok((await s.call("GET", "/api/apps", { token: s.admin })).body.some((a: any) => a.pkg === "com.confiance.driver"));
+  await s.call("DELETE", `/api/managed-apps/${apps[0].id}`, { token: s.admin });
+  assert.deepEqual((await s.call("POST", "/api/device/heartbeat", { token: e.deviceToken, body: { status: { deviceOwner: true } } })).body.policy.installApps, []);
+  // search finds drivers and vehicles
+  assert.equal((await s.call("GET", "/api/devices?q=njoya", { token: s.admin })).body.length, 1);
+  assert.equal((await s.call("GET", "/api/devices?q=452", { token: s.admin })).body.length, 1);
+});
+
+test("the dashboard is served next to the API with security headers; settings expose the new knobs", async () => {
+  const s = await makeApp();
+  const page = await s.call("GET", "/");
+  assert.equal(page.status, 200);
+  assert.match(page.res.headers.get("content-type") ?? "", /text\/html/);
+  assert.match(page.res.headers.get("content-security-policy") ?? "", /script-src 'self'/);
+  assert.match(new TextDecoder().decode(page.buf!), /<title>Confiance Kiosk<\/title>/);
+  assert.equal((await s.call("GET", "/app.js")).status, 200);
+  assert.equal((await s.call("GET", "/nope.js")).status, 404);
+  const st = (await s.call("GET", "/api/settings", { token: s.admin })).body;
+  assert.equal(st.heartbeatSec, 600);
+  assert.equal(st.dataBudgetMb, 2048);
+  assert.equal(st.tz, "Africa/Douala");
+  await s.call("PUT", "/api/settings", { token: s.admin, body: { heartbeatSec: 300, dispatchPhone: "+237 6 00", driverWifi: false } });
+  const e = await enrolled(s, "S");
+  const hb = await s.call("POST", "/api/device/heartbeat", { token: e.deviceToken, body: { status: { deviceOwner: true } } });
+  assert.equal(hb.body.policy.intervalSec, 300);
+  assert.equal(hb.body.policy.dispatchPhone, "+237 6 00");
+  assert.equal(hb.body.policy.driverWifi, false);
+  assert.equal(hb.body.policy.serverUrl, "https://kiosk.example.com");
 });

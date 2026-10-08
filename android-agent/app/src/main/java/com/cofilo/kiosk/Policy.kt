@@ -1,10 +1,13 @@
 package com.cofilo.kiosk
 
+import android.Manifest
+import android.app.Activity
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.os.Build
 import android.os.UserManager
 import android.provider.Settings
 import java.security.MessageDigest
@@ -14,9 +17,20 @@ import javax.crypto.spec.PBEKeySpec
 /**
  * Applies / removes the device lockdown. Everything here needs the app to be the
  * **device owner** (set during QR provisioning); without it the calls are no-ops.
+ * 1.4.0: grants the location/phone runtime permissions the telemetry needs, sets the *system* brightness
+ * (the window attribute only affected the kiosk screen) and offers a temporary lock-task allow-list used
+ * for the Wi-Fi panel, the usage-access screen and the dialer.
  */
 object Policy {
     const val ACTION_STATE_CHANGED = "com.cofilo.kiosk.STATE_CHANGED"
+
+    /** Runtime permissions granted silently by the device owner (telemetry: location, IMEI/SIM, phone number). */
+    private val RUNTIME_PERMISSIONS = listOf(
+        Manifest.permission.ACCESS_FINE_LOCATION,
+        Manifest.permission.ACCESS_COARSE_LOCATION,
+        Manifest.permission.READ_PHONE_STATE,
+        Manifest.permission.READ_PHONE_NUMBERS,
+    )
 
     private val RESTRICTIONS = listOf(
         UserManager.DISALLOW_FACTORY_RESET,
@@ -77,6 +91,11 @@ object Policy {
         runCatching { dpm.setStatusBarDisabled(admin, true) }
         runCatching { dpm.setUserControlDisabledPackages(admin, pkgs.toList()) }
         runCatching { dpm.setPermissionPolicy(admin, DevicePolicyManager.PERMISSION_POLICY_AUTO_GRANT) }
+        RUNTIME_PERMISSIONS.forEach { perm ->
+            runCatching {
+                dpm.setPermissionGrantState(admin, ctx.packageName, perm, DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED)
+            }
+        }
         runCatching {
             dpm.setGlobalSetting(admin, Settings.Global.STAY_ON_WHILE_PLUGGED_IN, "7")
         }
@@ -134,8 +153,59 @@ object Policy {
             pinHash = ""
             released = false
             message = ""
+            restUrl = ""; restKey = ""
+            driverName = ""; vehicle = ""; dispatchPhone = ""
+            lostMode = false; lostMessage = ""; lostPhone = ""
+            pendingLocate = false; lastLocation = ""
         }
         notifyChanged(ctx)
+    }
+
+    /**
+     * Lets [extra] packages run inside the lock task until the next [apply] (the caller re-applies on resume).
+     * Used for the system Wi-Fi panel / usage-access screen and for the dialer while calling dispatch.
+     */
+    fun allowTemporarily(ctx: Context, vararg extra: String) {
+        if (!isOwner(ctx)) return
+        val pkgs = (Prefs(ctx).allowedApps.map { it.first } + ctx.packageName + extra.filter { it.isNotBlank() })
+            .distinct().toTypedArray()
+        runCatching { dpm(ctx).setLockTaskPackages(admin(ctx), pkgs) }
+    }
+
+    /** The package that handles `tel:` dialing, or "" when unknown. */
+    fun defaultDialer(ctx: Context): String = runCatching {
+        (ctx.getSystemService(Context.TELECOM_SERVICE) as? android.telecom.TelecomManager)?.defaultDialerPackage ?: ""
+    }.getOrDefault("")
+
+    /** Current system brightness in percent (0..100). */
+    fun brightnessPercent(ctx: Context): Int = runCatching {
+        Settings.System.getInt(ctx.contentResolver, Settings.System.SCREEN_BRIGHTNESS, 128) * 100 / 255
+    }.getOrDefault(50).coerceIn(0, 100)
+
+    /**
+     * Sets the system brightness (API 28+ device owner: `setSystemSetting`, which also switches auto-brightness
+     * off so the value sticks). Older releases only get the window attribute of [activity] (kiosk screen only).
+     */
+    fun setBrightness(ctx: Context, percent: Int, activity: Activity? = null) {
+        val pct = percent.coerceIn(5, 100)
+        val value = (pct * 255 / 100).coerceIn(1, 255)
+        var done = false
+        if (Build.VERSION.SDK_INT >= 28 && isOwner(ctx)) {
+            done = runCatching {
+                val dpm = dpm(ctx)
+                val admin = admin(ctx)
+                dpm.setSystemSetting(admin, Settings.System.SCREEN_BRIGHTNESS_MODE,
+                    Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL.toString())
+                dpm.setSystemSetting(admin, Settings.System.SCREEN_BRIGHTNESS, value.toString())
+            }.isSuccess
+        }
+        if (!done && activity != null) {
+            runCatching {
+                val lp = activity.window.attributes
+                lp.screenBrightness = pct / 100f
+                activity.window.attributes = lp
+            }
+        }
     }
 
     private fun notifyChanged(ctx: Context) {

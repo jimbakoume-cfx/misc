@@ -8,12 +8,15 @@ import android.content.pm.PackageInstaller
 import android.util.Log
 import java.io.File
 
-/** Silent self-update (works because the agent is the device owner). */
+/**
+ * Silent install (works because the agent is the device owner): the self-update and, since 1.4.0, the managed
+ * apps from `policy.installApps` / the `install` command. [pkg] is the package the APK must carry.
+ */
 object Installer {
-    fun install(ctx: Context, apk: File) {
+    fun install(ctx: Context, apk: File, pkg: String = ctx.packageName) {
         val pi = ctx.packageManager.packageInstaller
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
-        params.setAppPackageName(ctx.packageName)
+        params.setAppPackageName(pkg)
         val id = pi.createSession(params)
         pi.openSession(id).use { session ->
             apk.inputStream().use { input ->
@@ -22,7 +25,7 @@ object Installer {
                     session.fsync(out)
                 }
             }
-            val intent = Intent(ctx, InstallResultReceiver::class.java)
+            val intent = Intent(ctx, InstallResultReceiver::class.java).putExtra("pkg", pkg)
             val pending = PendingIntent.getBroadcast(
                 ctx, id, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
             )
@@ -34,6 +37,11 @@ object Installer {
 class InstallResultReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, -1)
-        Log.i("KioskInstaller", "install status=$status msg=${intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)}")
+        val msg = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
+        Log.i("KioskInstaller", "install ${intent.getStringExtra("pkg")} status=$status msg=$msg")
+        if (status != PackageInstaller.STATUS_SUCCESS && status != PackageInstaller.STATUS_PENDING_USER_ACTION) {
+            // Surfaces in the next heartbeat as status.lastError (the commit itself cannot fail synchronously).
+            runCatching { Prefs(context).lastError = "install ${intent.getStringExtra("pkg")}: $status ${msg ?: ""}".take(200) }
+        }
     }
 }
