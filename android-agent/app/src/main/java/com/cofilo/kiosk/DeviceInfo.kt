@@ -7,6 +7,7 @@ import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationManager
@@ -147,13 +148,14 @@ object DeviceInfo {
         val pm = ctx.packageManager
         val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
         val arr = JSONArray()
+        val sysMask = ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP
         pm.queryIntentActivities(intent, PackageManager.MATCH_ALL)
-            .map { it.activityInfo.packageName to it.loadLabel(pm).toString() }
+            .map { Triple(it.activityInfo.packageName, it.loadLabel(pm).toString(), (it.activityInfo.applicationInfo.flags and sysMask) != 0) }
             .distinctBy { it.first }
             .filter { it.first != ctx.packageName }
             .sortedBy { it.second.lowercase() }
             .forEach {
-                arr.put(JSONObject().put("pkg", it.first).put("label", it.second)
+                arr.put(JSONObject().put("pkg", it.first).put("label", it.second).put("system", it.third)
                     .put("versionCode", installedVersionCode(ctx, it.first)))
             }
         return arr

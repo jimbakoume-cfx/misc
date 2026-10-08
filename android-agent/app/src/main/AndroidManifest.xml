@@ -24,8 +24,9 @@
         android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
 
-    <!-- Lets the agent list launchable apps (for the dashboard's allowed-apps picker)
-         without the broad QUERY_ALL_PACKAGES permission. -->
+    <!-- Lets the agent list the phone's apps for the dashboard's allowed-apps catalogue. The <queries> filter alone
+         left the list empty on Galaxy phones, so the device-management permission is declared as well. -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission" />
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />
