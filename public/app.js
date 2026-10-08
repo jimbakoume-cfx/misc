@@ -589,7 +589,7 @@ pages.provision = {
     </div>
     <h3 style="margin:28px 0 12px">${t("p.codes")}</h3>
     <div class="card tablecard"><div class="tablewrap"><table><thead><tr><th>${t("th.name")}</th><th>${t("th.code")}</th><th>${t("th.group")}</th><th>${t("th.used")}</th><th>${t("th.expires")}</th><th></th></tr></thead><tbody>
-      ${tokens.map((tk) => `<tr><td><b>${esc(tk.label)}</b></td><td><code style="font-size:13.5px;letter-spacing:.05em">${esc(tk.code)}</code> <button class="btn quiet sm icon" data-copy="${esc(tk.code)}" title="${esc(t("p.copy"))}" aria-label="${esc(t("p.copy"))}">${ic("copy")}</button></td><td>${esc(tk.groupName ?? "—")}</td><td>${tk.uses}/${tk.maxUses}</td><td class="muted">${when(tk.expiresAt)}${tk.expiresAt < Date.now() ? ` <span class="pill bad plain">${t("p.expired")}</span>` : ""}</td>
+      ${tokens.map((tk) => `<tr><td><b>${esc(tk.label)}</b></td><td><code style="font-size:13.5px;letter-spacing:.05em">${esc(tk.code)}</code> <button class="btn quiet sm icon" data-copy="${esc(tk.code)}" title="${esc(t("p.copy"))}" aria-label="${esc(t("p.copy"))}">${ic("copy")}</button></td><td>${esc(tk.groupName ?? "—")}</td><td><b>${tk.devices ?? 0}</b> <span class="muted sm">· ${t("p.setups", { n: tk.uses })}</span></td><td class="muted">${when(tk.expiresAt)}${tk.expiresAt < Date.now() ? ` <span class="pill bad plain">${t("p.expired")}</span>` : ""}</td>
         <td style="text-align:right" class="nowrap"><button class="btn ghost sm" data-qr="${esc(tk.token)}">${ic("qr")} ${t("p.showqr")}</button>${canWrite() ? ` <button class="btn quiet sm icon" data-rm="${esc(tk.token)}" title="${esc(t("p.del"))}" aria-label="${esc(t("p.del"))}">${ic("trash")}</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="6"><div class="empty"><div class="ico">${ic("qr")}</div><h3>${t("p.none.h")}</h3><p>${t("p.none.p")}</p></div></td></tr>`}
     </tbody></table></div></div>`;
   },
@@ -902,7 +902,8 @@ async function boot() {
   const tn = routeFromHash();
   if (location.hash !== "#/" + tn) history.replaceState(null, "", "#/" + tn);
   await go(tn);
-  setTimeout(() => { for (const p of ["devices", "settings"]) if (p !== tab) prefetch(p); }, 600); // warm the busiest pages
+  // Warm every page right after sign-in so navigation is instant (each request is cheap for the server).
+  setTimeout(() => { for (const p of Object.keys(pages)) if (p !== tab) prefetch(p); }, 400);
 }
 fetch(api_("healthz")).catch(() => {}); // wake the server while the page loads
 boot();

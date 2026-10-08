@@ -269,12 +269,18 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
       out.allowedOverride = d.allowed_override != null ? json(d.allowed_override, []) : null;
       out.messageOverride = d.message_override;
       out.lostMessage = d.lost_message ?? ""; out.lostPhone = d.lost_phone ?? "";
-      out.effective = json((await get("SELECT kiosk_policy(d) AS r FROM devices d WHERE d.id=?", d.id))?.r, {});
+      const [eff, commands, alerts, month] = await Promise.all([
+        get("SELECT kiosk_policy(d) AS r FROM devices d WHERE d.id=?", d.id),
+        all("SELECT id,type,status,error,created_at,done_at FROM commands WHERE device_id=? ORDER BY id DESC LIMIT 15", d.id),
+        all("SELECT id,ts,kind,message FROM alerts WHERE device_id=? AND active=1 ORDER BY ts DESC", d.id),
+        usage ? Promise.resolve(usage) : monthUsage(),
+      ]);
+      out.effective = json(eff?.r, {});
       out.apps = json(d.apps, []);
       out.androidId = d.android_id;
-      out.commands = await all("SELECT id,type,status,error,created_at,done_at FROM commands WHERE device_id=? ORDER BY id DESC LIMIT 15", d.id);
-      out.alerts = await all("SELECT id,ts,kind,message FROM alerts WHERE device_id=? AND active=1 ORDER BY ts DESC", d.id);
-      if (!usage) out.dataMonth = (await monthUsage()).get(Number(d.id)) ?? { mobileBytes: 0, wifiBytes: 0 };
+      out.commands = commands;
+      out.alerts = alerts;
+      if (!usage) out.dataMonth = month.get(Number(d.id)) ?? { mobileBytes: 0, wifiBytes: 0 };
     }
     return out;
   };
@@ -499,9 +505,11 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
   // ---------- dashboard API ----------
   add("GET", "/api/overview", "read", async () => {
     await sweep();
-    const devices = await all("SELECT * FROM devices");
-    const rel = await currentRelease();
-    const usage = await monthUsage();
+    const [devices, rel, usage, alertRowsRaw, budget] = await Promise.all([
+      all("SELECT * FROM devices"), currentRelease(), monthUsage(),
+      all("SELECT a.*, d.name device_name, d.driver_name FROM alerts a LEFT JOIN devices d ON d.id=a.device_id WHERE a.active=1 ORDER BY a.ts DESC LIMIT 50"),
+      setting("data_budget_mb", "2048"),
+    ]);
     const counts = { total: devices.length, online: 0, stale: 0, offline: 0, lowBattery: 0, outdated: 0, notLocked: 0, pendingApproval: 0, lost: 0, problems: 0 };
     let mobile = 0, wifi = 0;
     const top: { id: number; name: string; driverName: string; mobileBytes: number }[] = [];
@@ -517,24 +525,22 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
       const u = usage.get(Number(d.id)); if (u) { mobile += u.mobileBytes; wifi += u.wifiBytes; top.push({ id: d.id, name: d.name, driverName: d.driver_name ?? "", mobileBytes: u.mobileBytes }); }
     }
     top.sort((a, b) => b.mobileBytes - a.mobileBytes);
-    const alerts = alertRows(await all("SELECT a.*, d.name device_name, d.driver_name FROM alerts a LEFT JOIN devices d ON d.id=a.device_id WHERE a.active=1 ORDER BY a.ts DESC LIMIT 50"));
     return {
       ...counts, currentVersion: rel?.version_name ?? null, currentVersionCode: rel?.version_code ?? 0, intervalSec: cfg.hb, push: pushOn,
       live: devices.filter((d) => json(d.status, {}).pushConnected).length,
-      data: { mobileBytes: mobile, wifiBytes: wifi, budgetMb: num(await setting("data_budget_mb", "2048")), top: top.slice(0, 5) },
-      alerts,
+      data: { mobileBytes: mobile, wifiBytes: wifi, budgetMb: num(budget), top: top.slice(0, 5) },
+      alerts: alertRows(alertRowsRaw),
     };
   });
 
   add("GET", "/api/devices", "read", async (c) => {
     const q = c.query.get("q") ?? "", group = c.query.get("group") ?? "", state = c.query.get("state") ?? "";
-    let rows = await all("SELECT * FROM devices ORDER BY name");
+    let [rows, usage] = await Promise.all([all("SELECT * FROM devices ORDER BY name"), monthUsage()]);
     if (q) {
       const needle = q.toLowerCase();
       rows = rows.filter((d) => [d.name, d.driver_name, d.vehicle, d.model, d.serial, d.notes, d.imei].some((x) => String(x ?? "").toLowerCase().includes(needle)));
     }
     if (group) rows = rows.filter((d) => String(d.group_id ?? "none") === group);
-    const usage = await monthUsage();
     let out = await Promise.all(rows.map((d) => view(d, false, usage)));
     if (state) out = out.filter((d) => d.state === state);
     return out;
@@ -762,9 +768,9 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
 
   // enrollment tokens + QR
   add("GET", "/api/enroll-tokens", "read", async () =>
-    (await all("SELECT t.*, g.name AS group_name FROM enroll_tokens t LEFT JOIN device_groups g ON g.id=t.group_id ORDER BY created_at DESC"))
+    (await all("SELECT t.*, g.name AS group_name, (SELECT COUNT(*)::int FROM devices d WHERE d.enroll_code=t.token) AS devices FROM enroll_tokens t LEFT JOIN device_groups g ON g.id=t.group_id ORDER BY created_at DESC"))
       .map((t) => ({ token: t.token, code: showCode(t.token), label: t.label, groupId: t.group_id, groupName: t.group_name,
-        expiresAt: t.expires_at, maxUses: t.max_uses, uses: t.uses, createdAt: t.created_at })));
+        expiresAt: t.expires_at, maxUses: t.max_uses, uses: t.uses, devices: num(t.devices), createdAt: t.created_at })));
   add("POST", "/api/enroll-tokens", "write", async (c) => {
     const b = c.body;
     const token = randomCode();

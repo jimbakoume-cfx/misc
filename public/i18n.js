@@ -94,7 +94,7 @@ const I18N = {
     "p.usb.h": "Le QR ne fonctionne pas ?", "p.usb.p": "Utilisez le script d'installation USB. Il fonctionne sur tous les téléphones :", "p.usb.win": "Windows", "p.usb.mac": "Mac / Linux",
     "p.new": "Nouveau code d'installation", "p.new.p": "Un code peut configurer plusieurs téléphones jusqu'à son expiration.", "p.label": "Nom des téléphones", "p.label.h": "Ils seront nommés « {l}-001 », « {l}-002 »…",
     "p.group": "Groupe", "p.days": "Validité (jours)", "p.max": "Nombre max.", "p.create": "Créer le code & le QR", "p.codes": "Codes d'installation",
-    "th.name": "Nom", "th.code": "Code", "th.used": "Utilisé", "th.expires": "Expire", "p.expired": "expiré", "p.showqr": "Afficher le QR", "p.copy": "Copier le code", "p.del": "Supprimer le code",
+    "th.name": "Nom", "th.code": "Code", "th.used": "Téléphones", "p.setups": "{n} installation|{n} installations", "th.expires": "Expire", "p.expired": "expiré", "p.showqr": "Afficher le QR", "p.copy": "Copier le code", "p.del": "Supprimer le code",
     "p.none.h": "Aucun code d'installation", "p.none.p": "Créez-en un pour obtenir un QR code.", "p.qr.h": "À scanner sur l'écran de bienvenue", "p.qr.p": "Touchez d'abord 6 fois l'écran de bienvenue. Gardez ce QR privé : il permet d'inscrire un téléphone.",
     "p.del.ask": "Supprimer ce code ?", "p.del.p": "Il ne pourra plus configurer de téléphone. Les téléphones déjà configurés ne sont pas affectés.",
     // releases / apps
@@ -237,7 +237,7 @@ const I18N = {
     "p.usb.h": "QR setup not working?", "p.usb.p": "Use the USB setup script instead. It works on any phone:", "p.usb.win": "Windows", "p.usb.mac": "Mac / Linux",
     "p.new": "New setup code", "p.new.p": "One code can set up many phones until it expires.", "p.label": "Name for the phones", "p.label.h": "They are named “{l}-001”, “{l}-002”…",
     "p.group": "Group", "p.days": "Valid for (days)", "p.max": "Max phones", "p.create": "Create code & QR", "p.codes": "Setup codes",
-    "th.name": "Name", "th.code": "Code", "th.used": "Used", "th.expires": "Expires", "p.expired": "expired", "p.showqr": "Show QR", "p.copy": "Copy code", "p.del": "Delete code",
+    "th.name": "Name", "th.code": "Code", "th.used": "Phones", "p.setups": "{n} setup|{n} setups", "th.expires": "Expires", "p.expired": "expired", "p.showqr": "Show QR", "p.copy": "Copy code", "p.del": "Delete code",
     "p.none.h": "No setup codes yet", "p.none.p": "Create one to get a QR code.", "p.qr.h": "Scan on the Welcome screen", "p.qr.p": "Tap the Welcome screen 6 times first. Keep this QR private: anyone with it can enrol a phone.",
     "p.del.ask": "Delete this code?", "p.del.p": "Phones can no longer be set up with it. Phones already set up are not affected.",
     "r.title": "Apps", "r.sub": "The kiosk app and the apps installed on the phones",
