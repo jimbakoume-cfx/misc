@@ -43,6 +43,16 @@ for S in $DEVICES; do
     echo "$OUT" | grep -qiE "already|provision|user" && echo "The phone is already set up in a way that blocks this. Factory-reset it, skip every account step, then run again."
     continue
   fi
+  # Samsung Auto Blocker refuses every app that is not from a store (our updates included): switch it off now and let
+  # the app keep it off. Only settings whose name starts with "rampart_" (Samsung's name for it) are touched.
+  "$ADB" -s "$S" shell pm grant "$PKG" android.permission.WRITE_SECURE_SETTINGS >/dev/null 2>&1
+  FOUND=""
+  for NS in secure global; do
+    for NAME in $("$ADB" -s "$S" shell settings list "$NS" 2>/dev/null | tr -d '\r' | grep -E '^(rampart_[^=]*(enabled|switch)[^=]*|block_unverified_apps)=' | cut -d= -f1); do
+      "$ADB" -s "$S" shell settings put "$NS" "$NAME" 0 >/dev/null 2>&1; FOUND="$FOUND $NS/$NAME"
+    done
+  done
+  if [ -n "$FOUND" ]; then echo "Samsung Auto Blocker switched off ($FOUND )"; else echo "No Auto Blocker setting found on this phone. If updates are refused later, switch it off by hand (Settings > Security and privacy)."; fi
   # Portrait only: let the app switch auto-rotate off for the whole phone, and switch it off now.
   "$ADB" -s "$S" shell appops set "$PKG" WRITE_SETTINGS allow >/dev/null 2>&1
   "$ADB" -s "$S" shell settings put system accelerometer_rotation 0 >/dev/null 2>&1

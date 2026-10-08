@@ -12,6 +12,9 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- Portrait-only phones: the USB setup grants this (appops) so the app can switch auto-rotate off system-wide. -->
     <uses-permission android:name="android.permission.WRITE_SETTINGS" />
+    <!-- Keeps Samsung Auto Blocker off (it refuses every app that is not from a store, our own updates included).
+         Granted by the USB setup with `adb shell pm grant`; a device owner cannot grant it to itself. -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" tools:ignore="ProtectedPermissions" />
 
     <!-- Telemetry (1.4.0). Runtime permissions are granted silently by the device owner (Policy.apply);
          location is read as "last known" from the data-sync service, so no location foreground-service type is needed. -->

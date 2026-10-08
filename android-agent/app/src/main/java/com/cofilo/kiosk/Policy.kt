@@ -6,6 +6,7 @@ import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.IntentFilter
 import android.os.Build
 import android.os.UserManager
@@ -31,6 +32,9 @@ object Policy {
         Manifest.permission.READ_PHONE_STATE,
         Manifest.permission.READ_PHONE_NUMBERS,
     )
+
+    /** Samsung Auto Blocker switches (Settings.Secure / Global); names seen on One UI 6/7. */
+    val AUTO_BLOCKER_KEYS = listOf("rampart_main_switch_enabled", "rampart_auto_enabled_switch_enabled", "block_unverified_apps")
 
     private val RESTRICTIONS = listOf(
         UserManager.DISALLOW_FACTORY_RESET,
@@ -94,6 +98,17 @@ object Policy {
         RUNTIME_PERMISSIONS.forEach { perm ->
             runCatching {
                 dpm.setPermissionGrantState(admin, ctx.packageName, perm, DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED)
+            }
+        }
+        // Samsung Auto Blocker ("rampart") refuses every install that does not come from a store, our own updates
+        // included. When the USB setup granted WRITE_SECURE_SETTINGS, keep its switches off; only settings that exist on
+        // this phone are touched, so other brands are unaffected.
+        runCatching {
+            if (ctx.checkSelfPermission(Manifest.permission.WRITE_SECURE_SETTINGS) == PackageManager.PERMISSION_GRANTED) {
+                for (key in AUTO_BLOCKER_KEYS) {
+                    if (Settings.Secure.getInt(ctx.contentResolver, key, -1) > 0) Settings.Secure.putInt(ctx.contentResolver, key, 0)
+                    if (Settings.Global.getInt(ctx.contentResolver, key, -1) > 0) Settings.Global.putInt(ctx.contentResolver, key, 0)
+                }
             }
         }
         // Portrait only, for the whole phone (the driver app included): auto-rotate off and rotation fixed to 0.
