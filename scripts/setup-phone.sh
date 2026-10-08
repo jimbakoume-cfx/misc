@@ -8,7 +8,17 @@ SERVER="${2:-https://qzkoowbcngcdnhqystwz.supabase.co/functions/v1/kiosk}"
 PKG="com.cofilo.kiosk"
 ADB="${ADB:-$(command -v adb || true)}"
 [ -x "${ADB:-}" ] || { for c in "$(dirname "$0")/platform-tools/adb" "$HOME/platform-tools/adb"; do [ -x "$c" ] && ADB="$c" && break; done; }
-[ -x "${ADB:-}" ] || { echo "adb not found. Install Android platform-tools (https://developer.android.com/tools/releases/platform-tools)."; exit 1; }
+if [ ! -x "${ADB:-}" ]; then
+  # Nothing installed yet: fetch Google's USB tools (platform-tools, ~7 MB) next to this script. One-time.
+  case "$(uname -s)" in Darwin) os=darwin ;; *) os=linux ;; esac
+  echo "Downloading the Android USB tools (one-time, about 7 MB)..."
+  dir="$(cd "$(dirname "$0")" && pwd)"
+  curl -fsSL -o /tmp/platform-tools.zip "https://dl.google.com/android/repository/platform-tools-latest-$os.zip" \
+    && unzip -qo /tmp/platform-tools.zip -d "$dir" && rm -f /tmp/platform-tools.zip \
+    || { echo "Could not download the USB tools. Check the internet connection and run again."; exit 1; }
+  ADB="$dir/platform-tools/adb"; chmod +x "$ADB" 2>/dev/null || true
+  [ -x "$ADB" ] || { echo "The USB tools did not unpack as expected."; exit 1; }
+fi
 
 APK="$(mktemp -t confiance-kiosk.XXXXXX).apk"
 echo "Downloading the latest Confiance Kiosk app..."
