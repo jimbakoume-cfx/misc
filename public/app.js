@@ -151,9 +151,9 @@ function buildNav() {
 function showLogin() { clearInterval(refreshTimer); $("#app").classList.add("hidden"); $("#login").classList.remove("hidden"); cache.clear(); pageData = {}; }
 const prefetchedAt = {};
 function prefetch(tn) {
-  if (!pages[tn]?.load || Date.now() - (prefetchedAt[tn] ?? 0) < 15000) return;
+  if (!pages[tn]?.load || Date.now() - (prefetchedAt[tn] ?? 0) < 15000) return Promise.resolve();
   prefetchedAt[tn] = Date.now();
-  pages[tn].load().then((d) => { pageData[tn] = d; }).catch(() => {});
+  return pages[tn].load().then((d) => { pageData[tn] = d; }).catch(() => {});
 }
 const routeFromHash = () => { const r = location.hash.replace(/^#\/?/, ""); return pages[r] ? r : "overview"; };
 window.addEventListener("hashchange", () => go(routeFromHash()));
@@ -902,8 +902,9 @@ async function boot() {
   const tn = routeFromHash();
   if (location.hash !== "#/" + tn) history.replaceState(null, "", "#/" + tn);
   await go(tn);
-  // Warm every page right after sign-in so navigation is instant (each request is cheap for the server).
-  setTimeout(() => { for (const p of Object.keys(pages)) if (p !== tab) prefetch(p); }, 400);
+  // Warm every page right after sign-in so navigation is instant: one page at a time, so a fresh sign-in never
+  // fires a burst of requests at the server.
+  setTimeout(async () => { for (const p of Object.keys(pages)) if (p !== tab) await prefetch(p); }, 400);
 }
 fetch(api_("healthz")).catch(() => {}); // wake the server while the page loads
 boot();
