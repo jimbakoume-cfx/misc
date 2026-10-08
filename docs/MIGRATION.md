@@ -39,10 +39,11 @@ what changed and the few steps that cannot be done from the repository.
    GitHub Pages: Settings → Pages → Source "GitHub Actions", then run `.github/workflows/pages.yml` from the Actions tab.
 5. **Alert e-mails.** In Supabase → Edge Functions → Secrets add `RESEND_API_KEY` (and `ALERT_FROM`, a verified sender).
    Without it, alerts show in the dashboard only.
-6. **Build agent 1.4.0.** `android-agent/` already contains the new protocol (data usage, SIM, ring, locate, lost mode,
-   wipe, PostgREST check-ins, instant commands). Build and sign it with the existing key, upload it on the Apps page,
-   then **Roll out**. Phones on 1.3.x keep working through the Netlify proxy in the meantime and switch to the Supabase
-   address by themselves once updated (`policy.serverUrl`).
+6. **Agent 1.4.0** is built (`releases/kiosk-agent-1.4.0.apk`) and uploaded as the current release, so new phones get
+   it from the QR code. It is signed with a **new** keystore (the 1.3.4 key was not available), so phones still on
+   1.3.4 cannot update in place: Android refuses an update signed with another key. Set those phones up again from
+   the QR code (factory reset) or keep them on 1.3.4 through the old Netlify address. Every future build must be
+   signed with the same new keystore (`kiosk-release.keystore`, kept outside the repository).
 7. **Change the admin password** (Account page) after the first sign-in; the one created during the migration is only
    in the deployment notes.
 

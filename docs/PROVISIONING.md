@@ -17,7 +17,7 @@ safe-mode, factory reset, USB debugging and installing/removing apps are blocked
 
 ## Signing-certificate checksum
 The QR contains the SHA-256 of the app's signing certificate so Android can verify the download.
-For the supplied build it is in `releases/kiosk-agent-1.3.4.txt`. For your own build:
+For the supplied build it is in `releases/kiosk-agent-1.4.0.txt` (1.3.4 was signed with a different key: see `releases/kiosk-agent-1.3.4.txt`). For your own build:
 ```bash
 keytool -list -v -keystore kiosk-release.keystore -alias kiosk | grep SHA256
 # convert the hex to base64url (no padding):
