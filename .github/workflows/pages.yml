@@ -1,6 +1,7 @@
-# Hosts the dashboard on GitHub Pages (free) on every push: https://jimbakoume-cfx.github.io/misc/
-# The workflow enables Pages on the repository by itself the first time it runs. The page calls the Supabase API
-# directly (bearer token sign-in), so KIOSK_API below must be your function URL. Netlify hosting is independent.
+# Hosts the dashboard on GitHub Pages (free) at https://jimbakoume-cfx.github.io/misc/ and redeploys it on every push.
+# The workflow builds public/ (with <meta name="kiosk-api"> pointing at the Supabase function, so the page signs in
+# with a bearer token) and pushes the result to the gh-pages branch, which GitHub Pages serves. No Pages API call is
+# needed, so the default workflow token is enough. Netlify hosting is independent of this.
 name: Publish dashboard to GitHub Pages
 on:
   push:
@@ -8,26 +9,28 @@ on:
     paths: ["public/**", ".github/workflows/pages.yml"]
   workflow_dispatch:
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 concurrency: { group: pages, cancel-in-progress: true }
 env:
   KIOSK_API: https://qzkoowbcngcdnhqystwz.supabase.co/functions/v1/kiosk
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: { name: github-pages, url: "${{ steps.deployment.outputs.page_url }}" }
     steps:
       - uses: actions/checkout@v4
-      - name: Point the dashboard at the API
+      - name: Build the page
         run: |
-          mkdir -p out && cp -r public/. out/
+          mkdir -p out && cp -r public/. out/ && touch out/.nojekyll
           sed -i "s#<meta name=\"kiosk-api\" content=\"\">#<meta name=\"kiosk-api\" content=\"$KIOSK_API\">#" out/index.html
           grep -q "$KIOSK_API" out/index.html
-      - uses: actions/configure-pages@v5
-        with: { enablement: true }
-      - uses: actions/upload-pages-artifact@v3
-        with: { path: out }
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Push to gh-pages
+        run: |
+          cd out
+          git init -q -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Dashboard build from ${GITHUB_SHA::7}"
+          git push -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}" gh-pages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
