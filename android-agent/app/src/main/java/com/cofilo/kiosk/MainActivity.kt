@@ -554,7 +554,10 @@ class MainActivity : Activity() {
             }
             if (p.lastError.startsWith("install ")) {
                 val blocked = p.lastError.contains("VERIFICATION_FAILURE") || p.lastError.contains("Install not allowed")
-                val text = if (blocked) tr("Update blocked by Samsung Auto Blocker. Switch it off: Settings › Security and privacy › Auto Blocker, then try again.",
+                val restarting = p.lastError.contains("restarting the phone")
+                val text = if (restarting) tr("Update refused by the phone's security check: the phone restarts and installs it.",
+                    "Mise à jour refusée par le contrôle de sécurité du téléphone : il redémarre et l'installe.")
+                else if (blocked) tr("Update blocked by Samsung Auto Blocker. Switch it off: Settings › Security and privacy › Auto Blocker, then try again.",
                     "Mise à jour bloquée par Auto Blocker (Samsung). Désactivez-le : Paramètres › Sécurité et confidentialité › Auto Blocker, puis réessayez.") else p.lastError
                 col.addView(Ui.text(this, text, 12f, Ui.muted).apply { setPadding(0, dp(4), 0, dp(4)) })
             }
