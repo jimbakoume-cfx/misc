@@ -21,9 +21,18 @@ if (-not $Adb) {
   if (-not $Adb) { $cmd = Get-Command adb -ErrorAction SilentlyContinue; if ($cmd) { $Adb = $cmd.Source } }
 }
 if (-not $Adb) {
-  Say "adb was not found. Download 'SDK Platform-Tools for Windows' from https://developer.android.com/tools/releases/platform-tools," Red
-  Say "unzip it next to this script (so you have a 'platform-tools' folder) and run again." Red
-  exit 1
+  # Nothing installed yet: fetch Google's USB tools (platform-tools, ~7 MB) next to this script. One-time, no admin rights needed.
+  Say "Downloading the Android USB tools (one-time, about 7 MB)..."
+  $zip = Join-Path $env:TEMP "platform-tools-latest-windows.zip"
+  try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    Invoke-WebRequest -Uri "https://dl.google.com/android/repository/platform-tools-latest-windows.zip" -OutFile $zip -UseBasicParsing
+    Expand-Archive -Path $zip -DestinationPath $PSScriptRoot -Force
+    Remove-Item $zip -ErrorAction SilentlyContinue
+  } catch { Say "Could not download the USB tools: $($_.Exception.Message)" Red; Say "Check the internet connection and run again." Red; exit 1 }
+  $Adb = "$PSScriptRoot\platform-tools\adb.exe"
+  if (-not (Test-Path $Adb)) { Say "The USB tools did not unpack as expected. Run again, or unzip platform-tools next to this script." Red; exit 1 }
+  Say "USB tools ready." Green
 }
 function Run($serial, [string[]]$adbArgs) { (& $Adb -s $serial @adbArgs 2>&1 | Out-String).Trim() }
 
