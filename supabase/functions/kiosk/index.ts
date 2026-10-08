@@ -13,7 +13,7 @@ const anonKey = env("SUPABASE_ANON_KEY") || jsonDefault(env("SUPABASE_PUBLISHABL
 const publicUrl = env("PUBLIC_URL") || `${supabaseUrl}/functions/v1/kiosk`;
 
 // Transaction-mode pooler: no prepared statements, few connections per isolate.
-const sql = postgres(env("SUPABASE_DB_URL"), { prepare: false, max: 3, idle_timeout: 20, connect_timeout: 10 });
+const sql = postgres(env("SUPABASE_DB_URL"), { prepare: false, max: 2, idle_timeout: 90, connect_timeout: 10 });
 
 // Two public buckets: "apk" for app files (phones download them straight from the CDN) and "web" for the dashboard
 // files, which this function serves with its security headers. Both are created by the migrations.

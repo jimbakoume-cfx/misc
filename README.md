@@ -30,5 +30,5 @@ cd android-agent
 Requires JDK 17+ and the Android SDK (platform 34).
 
 ## Dashboard and backend
-Backend on Supabase (project `confiance-kiosk`), dashboard at https://confiance-kiosk.netlify.app; see `docs/DEPLOY.md`.
+Backend on Supabase (project `confiance-kiosk`), dashboard at https://confiance-kiosk-console.netlify.app; see `docs/DEPLOY.md`.
 Tests: `npm ci && npm test`. Local copy of everything: `npm run dev`.

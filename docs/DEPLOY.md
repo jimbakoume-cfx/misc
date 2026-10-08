@@ -8,7 +8,7 @@ Phones check in straight through PostgREST (`kiosk_heartbeat`), so the function 
 |---|---|
 | Project | `confiance-kiosk`, ref `qzkoowbcngcdnhqystwz`, region eu-west-3 (Paris) |
 | API / function | `https://qzkoowbcngcdnhqystwz.supabase.co/functions/v1/kiosk` |
-| Dashboard | `https://confiance-kiosk.netlify.app` (static files, proxied `/api` → the function) |
+| Dashboard | `https://confiance-kiosk-console.netlify.app` (static files, proxied `/api` → the function) |
 | APK downloads | `https://qzkoowbcngcdnhqystwz.supabase.co/storage/v1/object/public/apk/kiosk-agent.apk` |
 
 Supabase does not let a function on `*.supabase.co` serve HTML (it rewrites it to plain text), so the console's files

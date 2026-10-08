@@ -29,9 +29,13 @@ what changed and the few steps that cannot be done from the repository.
    ```
    Then upload the current APK (`releases/kiosk-agent-1.3.4.apk`) on the Apps page: the files were in Netlify Blobs.
    Without this step, enrol the phones again with a new code.
-4. **Deploy the dashboard.** Netlify: connect the repository (branch `main`) or `netlify deploy --prod --dir=public` with
-   the new `netlify.toml`; the site now serves `public/` and proxies `/api`, `/apk`, `/healthz` to Supabase. Remove the
-   old Netlify environment variables (`DATABASE_URL`, `SESSION_SECRET`, …): nothing reads them any more.
+4. **Dashboard hosting.** The console is live at https://confiance-kiosk-console.netlify.app (Netlify project
+   `confiance-kiosk-console` in the jim-bakoume team, deployed from this repository with the new `netlify.toml`: static
+   `public/` plus `/api`, `/apk`, `/healthz` proxied to Supabase). That deploy was a manual upload: connect the
+   repository in the Netlify project settings so that every push redeploys it. The previous site,
+   `confiance-kiosk.netlify.app`, belongs to another Netlify account; phones on agent 1.3.x still talk to it, so either
+   redeploy this repository there too (same `netlify.toml`, which turns it into a proxy to Supabase) or re-enrol those
+   phones with agent 1.4.0. Remove its old environment variables (`DATABASE_URL`, `SESSION_SECRET`, …) afterwards.
    GitHub Pages: Settings → Pages → Source "GitHub Actions", then run `.github/workflows/pages.yml` from the Actions tab.
 5. **Alert e-mails.** In Supabase → Edge Functions → Secrets add `RESEND_API_KEY` (and `ALERT_FROM`, a verified sender).
    Without it, alerts show in the dashboard only.

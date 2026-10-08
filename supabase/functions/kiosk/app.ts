@@ -85,17 +85,32 @@ type Auth = "none" | "read" | "write" | "cron";
 interface Route { method: string; re: RegExp; auth: Auth; fn: Handler }
 
 export function createApp(deps: Deps): (req: Request) => Promise<Response> {
-  const { db, blobs, env } = deps;
+  const { blobs, env } = deps;
   const doFetch = deps.fetch ?? fetch;
+  // Per-isolate counters for the Server-Timing header (diagnostics; approximate under concurrent requests).
+  const stats = { n: 0, ms: 0 };
+  const db: Db = { query: async (text, params) => { const t = performance.now(); try { return await deps.db.query(text, params); } finally { stats.n++; stats.ms += performance.now() - t; } } };
   const get = async (sql: string, ...p: any[]) => (await db.query(toPg(sql), p))[0] as Row | undefined;
   const all = (sql: string, ...p: any[]) => db.query(toPg(sql), p) as Promise<Row[]>;
   const run = async (sql: string, ...p: any[]) => { await db.query(toPg(sql), p); };
   const insert = async (sql: string, ...p: any[]) => Number((await db.query(toPg(sql + " RETURNING id"), p))[0].id);
   const now = () => Date.now();
 
-  const setting = async (k: string, d = "") => ((await get("SELECT value FROM settings WHERE key=?", k))?.value as string) ?? d;
-  const setSetting = (k: string, v: string) =>
-    run("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", k, v);
+  // The settings table is small and read on every request, so it is loaded in one query and kept for a few seconds
+  // per isolate (writes update the copy). Every database round trip costs ~100 ms from the edge, so fewer is faster.
+  let sCache: Record<string, string> | null = null; let sAt = 0;
+  const allSettings = async () => {
+    if (!sCache || now() - sAt > 5_000) {
+      sCache = Object.fromEntries((await all("SELECT key,value FROM settings")).map((r) => [r.key, String(r.value ?? "")]));
+      sAt = now();
+    }
+    return sCache;
+  };
+  const setting = async (k: string, d = "") => (await allSettings())[k] ?? d;
+  const setSetting = async (k: string, v: string) => {
+    await run("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", k, v);
+    if (sCache) sCache[k] = v;
+  };
   const audit = (actor: string, action: string, detail = "") =>
     run("INSERT INTO audit(ts,actor,action,detail) VALUES(?,?,?,?)", now(), actor, action, String(detail));
   const num = (v: any, d = 0) => (v == null || v === "" || Number.isNaN(Number(v)) ? d : Number(v));
@@ -113,24 +128,29 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
   // ---------- one-time init: addresses for the SQL side, session secret, first admin, bundled first release ----------
   let initP: Promise<void> | null = null;
   const init = (base: string) => (initP ??= (async () => {
-    if (!secret) {
-      secret = await setting("session_secret");
-      if (!secret) { secret = randomToken(32); await setSetting("session_secret", secret); }
+    const s = await allSettings();
+    const want: Record<string, string> = {
+      cron_key: s.cron_key || randomToken(24), public_url: base, apk_base_url: apkBase(base),
+      supabase_url: pushOn ? supabaseUrl : "", supabase_anon_key: pushOn ? supabaseKey : "",
+    };
+    if (!secret) { secret = s.session_secret || randomToken(32); want.session_secret = secret; }
+    const changed = Object.entries(want).filter(([k, v]) => s[k] !== v);
+    if (changed.length) {
+      await run(`INSERT INTO settings(key,value) VALUES ${changed.map(() => "(?,?)").join(",")} ON CONFLICT(key) DO UPDATE SET value=excluded.value`, ...changed.flat());
+      for (const [k, v] of changed) s[k] = v;
     }
-    if (!(await setting("cron_key"))) await setSetting("cron_key", randomToken(24));
-    await setSetting("public_url", base);
-    await setSetting("apk_base_url", apkBase(base));
-    await setSetting("supabase_url", pushOn ? supabaseUrl : "");
-    await setSetting("supabase_anon_key", pushOn ? supabaseKey : "");
-    const admins = await get("SELECT 1 x FROM admins");
     const email = (env.ADMIN_EMAIL ?? "").toLowerCase().trim();
     const pw = env.ADMIN_PASSWORD ?? "";
-    if (!admins && email && pw.length >= 8) {
-      await run("INSERT INTO admins(email,pass_hash,role) VALUES(?,?,'admin') ON CONFLICT(email) DO NOTHING", email, hashPassword(pw));
-    }
-    if (!(await get("SELECT 1 x FROM releases")) && deps.loadSeed) {
-      const seed = await deps.loadSeed();
-      if (seed) await storeRelease(seed.apk, seed.versionCode, seed.versionName, seed.certSha256);
+    const bootstrapAdmin = email && pw.length >= 8;
+    if (bootstrapAdmin || deps.loadSeed) {
+      const st = (await get("SELECT EXISTS(SELECT 1 FROM admins) a, EXISTS(SELECT 1 FROM releases) r"))!;
+      if (!st.a && bootstrapAdmin) {
+        await run("INSERT INTO admins(email,pass_hash,role) VALUES(?,?,'admin') ON CONFLICT(email) DO NOTHING", email, hashPassword(pw));
+      }
+      if (!st.r && deps.loadSeed) {
+        const seed = await deps.loadSeed();
+        if (seed) await storeRelease(seed.apk, seed.versionCode, seed.versionName, seed.certSha256);
+      }
     }
   })().catch((e) => { initP = null; throw e; }));
 
@@ -197,7 +217,8 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
   let cfgAt = 0; let cfg = { hb: HEARTBEAT_SEC, push: PUSH_HEARTBEAT_SEC };
   const intervals = async () => {
     if (now() - cfgAt > 10_000) {
-      cfg = { hb: num(await setting("heartbeat_sec"), HEARTBEAT_SEC), push: num(await setting("push_heartbeat_sec"), PUSH_HEARTBEAT_SEC) };
+      const s = await allSettings();
+      cfg = { hb: num(s.heartbeat_sec, HEARTBEAT_SEC), push: num(s.push_heartbeat_sec, PUSH_HEARTBEAT_SEC) };
       cfgAt = now();
     }
     return cfg;
@@ -963,6 +984,11 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
   // ---------- dispatcher ----------
   return async (req: Request): Promise<Response> => {
     const url = new URL(req.url);
+    const t0 = performance.now(); const n0 = stats.n, ms0 = stats.ms;
+    const timed = (res: Response) => {
+      res.headers.set("server-timing", `total;dur=${(performance.now() - t0).toFixed(0)}, db;dur=${(stats.ms - ms0).toFixed(0)};desc="${stats.n - n0} queries"`);
+      return res;
+    };
     try {
       const path = stripBase(url.pathname);
       if (path === null) return reply({ error: "Not found" }, 404);
@@ -1019,11 +1045,11 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
         }
       }
       const out = await matched.fn(ctx);
-      return withCors(out instanceof Response ? out : reply(out));
+      return timed(withCors(out instanceof Response ? out : reply(out)));
     } catch (e: any) {
-      if (e instanceof HttpError) return withCors(reply({ error: e.message }, e.status));
+      if (e instanceof HttpError) return timed(withCors(reply({ error: e.message }, e.status)));
       console.error(e);
-      return withCors(reply({ error: "Server error" }, 500));
+      return timed(withCors(reply({ error: "Server error" }, 500)));
     }
   };
 }

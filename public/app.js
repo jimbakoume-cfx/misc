@@ -82,7 +82,9 @@ const cache = new Map(); // GET url -> last response (shown instantly, then refr
 async function api(method, url, body, raw) {
   barStart();
   try {
-    const tok = CROSS ? tokenStore.get() : "";
+    // The session token is always sent as a bearer header: it works through any proxy (Netlify, GitHub Pages) and
+    // does not depend on the API's cookie reaching this origin. The cookie remains a fallback for same-origin setups.
+    const tok = tokenStore.get();
     const res = await fetch(api_(url), {
       method, credentials: CROSS ? "omit" : "same-origin",
       headers: { "x-requested-with": "confiance-dashboard", ...(tok ? { authorization: `Bearer ${tok}` } : {}), ...(raw ? { "content-type": "application/octet-stream" } : body ? { "content-type": "application/json" } : {}) },
@@ -90,7 +92,7 @@ async function api(method, url, body, raw) {
     });
     const data = await res.json().catch(() => ({}));
     if (res.status === 401 && url !== "/api/login") { tokenStore.set(""); showLogin(); throw new Error("Signed out"); }
-    if (CROSS && data.token && /^\/api\/(login|me\/password|me\/2fa\/enable)$/.test(url)) tokenStore.set(data.token);
+    if (data.token && /^\/api\/(login|me\/password|me\/2fa\/enable)$/.test(url)) tokenStore.set(data.token);
     if (!res.ok) { const e = new Error(data.error || `HTTP ${res.status}`); e.data = data; throw e; }
     if (data.need2faSetup) { location.hash = "#/account"; }
     if (method === "GET") cache.set(url, data);
