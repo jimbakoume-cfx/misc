@@ -18,8 +18,8 @@ android {
         applicationId = "com.cofilo.kiosk"
         minSdk = 26
         targetSdk = 34
-        versionCode = 17
-        versionName = "1.4.4"
+        versionCode = 18
+        versionName = "1.4.5"
     }
 
     signingConfigs {

@@ -62,6 +62,16 @@ foreach ($s in $ready) {
     elseif ($out -match "already|provision|user") { Say "The phone is already set up in a way that blocks this. Factory-reset it, skip every account step, then run this again." Yellow }
     continue
   }
+  # Samsung Auto Blocker refuses every app that is not from a store (our updates included): switch it off now and let
+  # the app keep it off. Only settings whose name starts with "rampart_" (Samsung's name for it) are touched.
+  Run $s @("shell", "pm", "grant", $Package, "android.permission.WRITE_SECURE_SETTINGS") | Out-Null
+  $found = @()
+  foreach ($ns in @("secure", "global")) {
+    $lines = (Run $s @("shell", "settings", "list", $ns)) -split "`n" | Where-Object { $_ -match "^(rampart_\S*(enabled|switch)\S*|block_unverified_apps)=" }
+    foreach ($l in $lines) { $name = ($l.Trim() -split "=")[0]; Run $s @("shell", "settings", "put", $ns, $name, "0") | Out-Null; $found += "$ns/$name" }
+  }
+  if ($found.Count) { Say ("Samsung Auto Blocker switched off (" + ($found -join ", ") + ")") Green }
+  else { Say "No Auto Blocker setting found on this phone. If updates are refused later, switch Auto Blocker off by hand (Settings > Security and privacy)." Yellow }
   # Portrait only: let the app switch auto-rotate off for the whole phone, and switch it off now.
   Run $s @("shell", "appops", "set", $Package, "WRITE_SETTINGS", "allow") | Out-Null
   Run $s @("shell", "settings", "put", "system", "accelerometer_rotation", "0") | Out-Null
