@@ -1,0 +1,8 @@
+Package:            com.cofilo.kiosk
+App name:           Confiance Kiosk
+Admin component:    com.cofilo.kiosk/.AdminReceiver
+Version:            1.4.8 (code 21)
+Cert SHA-256 (QR):  XeoIrAWAbYI7udlW8sbtVACe0PkY2EH11nXoQlVJdCU
+Signed with:        kiosk-release.keystore (alias kiosk), created 2026-10-08; NOT the key used for 1.3.4
+SHA-256 (APK):      b6368d5b36cf4f0d8398c2c489fac37662fe46da15db20c310aacf99d04a294f
+Changes:            an update refused by the phone's security check (Samsung Auto Blocker) now switches it off, restarts the phone once and installs right after boot

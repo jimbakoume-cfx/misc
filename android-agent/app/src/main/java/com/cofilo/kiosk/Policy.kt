@@ -100,17 +100,7 @@ object Policy {
                 dpm.setPermissionGrantState(admin, ctx.packageName, perm, DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED)
             }
         }
-        // Samsung Auto Blocker ("rampart") refuses every install that does not come from a store, our own updates
-        // included. When the USB setup granted WRITE_SECURE_SETTINGS, keep its switches off; only settings that exist on
-        // this phone are touched, so other brands are unaffected.
-        runCatching {
-            if (ctx.checkSelfPermission(Manifest.permission.WRITE_SECURE_SETTINGS) == PackageManager.PERMISSION_GRANTED) {
-                for (key in AUTO_BLOCKER_KEYS) {
-                    if (Settings.Secure.getInt(ctx.contentResolver, key, -1) > 0) Settings.Secure.putInt(ctx.contentResolver, key, 0)
-                    if (Settings.Global.getInt(ctx.contentResolver, key, -1) > 0) Settings.Global.putInt(ctx.contentResolver, key, 0)
-                }
-            }
-        }
+        disableAutoBlocker(ctx)
         // Portrait only, for the whole phone (the driver app included): auto-rotate off and rotation fixed to 0.
         // Writing these needs WRITE_SETTINGS, which the USB setup grants with adb; without it this app alone stays
         // portrait (manifest) and the system setting is left as it is.
@@ -234,5 +224,22 @@ object Policy {
 
     private fun notifyChanged(ctx: Context) {
         ctx.sendBroadcast(Intent(ACTION_STATE_CHANGED).setPackage(ctx.packageName))
+    }
+
+    /**
+     * Samsung Auto Blocker ("rampart") refuses every install that does not come from a store, our own updates included.
+     * When the USB setup granted WRITE_SECURE_SETTINGS, switch it off; only settings that exist on this phone are
+     * touched, so other brands are unaffected. Returns true when a switch was changed.
+     */
+    fun disableAutoBlocker(ctx: Context): Boolean {
+        var changed = false
+        runCatching {
+            if (ctx.checkSelfPermission(Manifest.permission.WRITE_SECURE_SETTINGS) != PackageManager.PERMISSION_GRANTED) return false
+            for (key in AUTO_BLOCKER_KEYS) {
+                if (Settings.Secure.getInt(ctx.contentResolver, key, -1) > 0 && Settings.Secure.putInt(ctx.contentResolver, key, 0)) changed = true
+                if (Settings.Global.getInt(ctx.contentResolver, key, -1) > 0 && Settings.Global.putInt(ctx.contentResolver, key, 0)) changed = true
+            }
+        }
+        return changed
     }
 }

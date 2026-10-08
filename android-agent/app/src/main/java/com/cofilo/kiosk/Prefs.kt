@@ -129,6 +129,10 @@ class Prefs(context: Context) {
     var lastUpdateAttempt: Long
         get() = sp.getLong("lastUpdateAttempt", 0L)
         set(v) = put("lastUpdateAttempt", v)
+    /** Wall-clock time of the last restart made to get a refused install through (see [InstallResultReceiver]). */
+    var lastInstallReboot: Long
+        get() = sp.getLong("lastInstallReboot", 0L)
+        set(v) = put("lastInstallReboot", v)
 
     var lastCheckIn: Long
         get() = sp.getLong("lastCheckIn", 0L)

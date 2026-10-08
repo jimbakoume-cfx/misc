@@ -7,6 +7,9 @@ import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.widget.Toast
 import android.util.Log
 import java.io.File
 
@@ -56,7 +59,36 @@ class InstallResultReceiver : BroadcastReceiver() {
                 prefs.lastError = "install $pkg: waiting for confirmation on the phone"
             }
             // Surfaces in the next heartbeat as status.lastError (the commit itself cannot fail synchronously).
-            else -> prefs.lastError = "install $pkg failed ($status): ${msg ?: ""}".take(200)
+            else -> {
+                prefs.lastError = "install $pkg failed ($status): ${msg ?: ""}".take(200)
+                if (refusedBySecurityCheck(status, msg)) retryAfterRestart(context, prefs, pkg ?: "")
+            }
         }
     }
+
+    /** Samsung Auto Blocker answers INSTALL_FAILED_VERIFICATION_FAILURE "Install not allowed"; a plain policy block is STATUS_FAILURE_BLOCKED. */
+    private fun refusedBySecurityCheck(status: Int, msg: String?): Boolean =
+        status == PackageInstaller.STATUS_FAILURE_BLOCKED || (msg ?: "").let { it.contains("VERIFICATION", true) || it.contains("not allowed", true) }
+
+    /**
+     * The phone's security check refused the install. Observed on a Galaxy A17: after its switches are turned off the
+     * check keeps refusing until the phone restarts, and the same update then installs at once. So: switch Auto
+     * Blocker off, restart the phone (device owner), and let the agent retry right after boot. At most one restart
+     * every six hours, so a refusal that survives a restart is reported instead of looping.
+     */
+    private fun retryAfterRestart(ctx: Context, prefs: Prefs, pkg: String) {
+        if (!Policy.isOwner(ctx)) return
+        if (System.currentTimeMillis() - prefs.lastInstallReboot < REBOOT_EVERY_MS) return
+        Policy.disableAutoBlocker(ctx)
+        prefs.lastInstallReboot = System.currentTimeMillis()
+        prefs.lastUpdateAttempt = 0L // retry the self-update at the first check-in after boot
+        prefs.lastError = "install $pkg refused by the phone's security check: restarting the phone to retry"
+        runCatching { Toast.makeText(ctx, Ui.tr("Installing the update: the phone restarts in a few seconds.", "Installation de la mise à jour : le téléphone redémarre dans quelques secondes."), Toast.LENGTH_LONG).show() }
+        Handler(Looper.getMainLooper()).postDelayed({
+            runCatching { Policy.dpm(ctx).reboot(Policy.admin(ctx)) }
+                .onFailure { Log.w("KioskInstaller", "reboot refused: ${it.message}") }
+        }, 4_000L)
+    }
+
+    private companion object { const val REBOOT_EVERY_MS = 6 * 60 * 60_000L }
 }

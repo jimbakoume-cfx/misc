@@ -28,6 +28,8 @@ You need: a Windows PC (or Mac/Linux), a USB **data** cable, and the enrollment 
 - *"Install failed"*: accept any Play Protect or "install via USB" question on the phone and run again.
 - Samsung **Auto Blocker** (Paramètres → Sécurité et confidentialité) blocks USB commands and every later app update or
   install from the dashboard (the phone then reports "INSTALL_FAILED_VERIFICATION_FAILURE: Install not allowed").
-  The setup script switches it off and lets the app keep it off; if it reports "No Auto Blocker setting found",
-  switch it off by hand and leave it off.
+  The setup script switches it off and lets the app keep it off. Since agent 1.4.8 a refused update also makes the
+  app switch Auto Blocker off, restart the phone once and install the update right after boot (on a Galaxy A17 the
+  block only lifts after a restart); the dashboard shows "restarting the phone to retry" meanwhile. If an update is
+  still refused after that restart, switch Auto Blocker off by hand (search "Auto Blocker" in Settings) and leave it off.
 - To start over on a phone: factory-reset it.
