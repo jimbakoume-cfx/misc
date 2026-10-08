@@ -265,7 +265,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
 
   const baseUrl = (c: Ctx) => publicUrl || c.url.origin;
   const isHttps = (c: Ctx) => c.url.protocol === "https:" || publicUrl.startsWith("https");
-  const cookiePath = basePath || "/";
+  const cookiePath = "/";
   const sessionCookie = (c: Ctx, token: string) => `kiosk_session=${token}; HttpOnly; SameSite=Strict; Path=${cookiePath}; Max-Age=43200${isHttps(c) ? "; Secure" : ""}`;
 
   // ---------- alerts ----------
@@ -305,6 +305,15 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
   const who = (c: Ctx) => c.admin!.email;
   const reply = (data: unknown, status = 200, headers: Record<string, string> = {}) =>
     new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json", "cache-control": "no-store", ...headers } });
+  // A dashboard served from another host (static hosting) signs in with a bearer token, never cookies, so the API can
+  // answer any origin: a third-party page gains nothing without a token, and cookie sessions are same-origin only.
+  const CORS: Record<string, string> = {
+    "access-control-allow-origin": "*",
+    "access-control-allow-methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    "access-control-allow-headers": "authorization, content-type, x-requested-with",
+    "access-control-max-age": "86400",
+  };
+  const withCors = (res: Response) => { for (const [k, v] of Object.entries(CORS)) res.headers.set(k, v); return res; };
 
   add("GET", "/healthz", "none", async () => ({ ok: true }));
 
@@ -317,7 +326,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
   }
   const failed = (keys: string[]) => Promise.all(keys.map((k) =>
     run("INSERT INTO login_attempts(key,n,until_ts) VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET n=login_attempts.n+1, until_ts=excluded.until_ts", k, now() + 5 * 60_000)));
-  const clientIp = (c: Ctx) => c.req.headers.get("x-nf-client-connection-ip") ?? c.req.headers.get("cf-connecting-ip") ?? c.req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "ip";
+  const clientIp = (c: Ctx) => c.req.headers.get("x-nf-client-connection-ip") ?? c.req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? c.req.headers.get("cf-connecting-ip") ?? "ip";
 
   add("POST", "/api/login", "none", async (c) => {
     const email = String(c.body.email ?? "").toLowerCase().trim();
@@ -383,7 +392,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
     await run("UPDATE admins SET pass_hash=?, session_version=session_version+1 WHERE id=?", hashPassword(next), me.id);
     await audit(me.email, "password-changed", "all other sessions signed out");
     const token = signSession(secret, { id: me.id, email: me.email, role: me.role, sv: me.session_version + 1 });
-    return reply({ ok: true }, 200, { "set-cookie": sessionCookie(c, token) });
+    return reply({ ok: true, token }, 200, { "set-cookie": sessionCookie(c, token) });
   });
 
   add("POST", "/api/me/2fa/setup", "read", async (c) => {
@@ -403,7 +412,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
       JSON.stringify(codes.map((x) => sha256(normRecovery(x)))), me.id);
     await audit(me.email, "2fa-enabled");
     const token = signSession(secret, { id: me.id, email: me.email, role: me.role, sv: me.session_version + 1 });
-    return reply({ ok: true, recoveryCodes: codes }, 200, { "set-cookie": sessionCookie(c, token) });
+    return reply({ ok: true, recoveryCodes: codes, token }, 200, { "set-cookie": sessionCookie(c, token) });
   });
   add("POST", "/api/me/2fa/disable", "read", async (c) => {
     const me = (await get("SELECT * FROM admins WHERE id=?", c.admin!.id))!;
@@ -957,6 +966,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
     try {
       const path = stripBase(url.pathname);
       if (path === null) return reply({ error: "Not found" }, 404);
+      if (req.method === "OPTIONS") return withCors(new Response(null, { status: 204 }));
       const base = publicUrl || url.origin;
       await init(base);
       await intervals();
@@ -1009,11 +1019,11 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
         }
       }
       const out = await matched.fn(ctx);
-      return out instanceof Response ? out : reply(out);
+      return withCors(out instanceof Response ? out : reply(out));
     } catch (e: any) {
-      if (e instanceof HttpError) return reply({ error: e.message }, e.status);
+      if (e instanceof HttpError) return withCors(reply({ error: e.message }, e.status));
       console.error(e);
-      return reply({ error: "Server error" }, 500);
+      return withCors(reply({ error: "Server error" }, 500));
     }
   };
 }

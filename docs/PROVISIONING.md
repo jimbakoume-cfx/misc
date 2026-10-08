@@ -34,7 +34,8 @@ On a freshly reset phone with **no Google account added** and USB debugging on:
 adb install kiosk-agent-1.3.4.apk
 adb shell dpm set-device-owner com.cofilo.kiosk/.AdminReceiver
 ```
-Then enter the server address and enrolment code on the phone's screen.
+Then enter the server address (`https://qzkoowbcngcdnhqystwz.supabase.co/functions/v1/kiosk`, shown under
+Settings → Installation → Addresses) and the enrolment code on the phone's screen.
 
 ## Troubleshooting
 - *QR scanner doesn't appear:* the phone isn't on the first setup screen; reset it again.

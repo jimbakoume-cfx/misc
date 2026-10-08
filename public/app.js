@@ -5,9 +5,13 @@
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-// The console may be served under a prefix (e.g. /functions/v1/kiosk/), so every address is relative to the page.
-const BASE = new URL(".", location.href).pathname;
+// The console may be served under a prefix (e.g. /functions/v1/kiosk/), so every address is relative to the page,
+// unless <meta name="kiosk-api"> names the API (static hosting elsewhere): then a bearer token replaces the cookie.
+const API_META = (document.querySelector('meta[name="kiosk-api"]')?.content ?? "").trim().replace(/\/$/, "");
+const BASE = API_META ? API_META + "/" : new URL(".", location.href).pathname;
+const CROSS = !!API_META && new URL(BASE, location.href).origin !== location.origin;
 const api_ = (p) => BASE + p.replace(/^\//, "");
+const tokenStore = { get: () => { try { return sessionStorage.getItem("kiosk.token") || localStorage.getItem("kiosk.token") || ""; } catch { return ""; } }, set: (v) => { try { v ? localStorage.setItem("kiosk.token", v) : localStorage.removeItem("kiosk.token"); } catch { /* private mode */ } } };
 const ICONS = {
   grid: '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>',
   phone: '<rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/>',
@@ -78,13 +82,15 @@ const cache = new Map(); // GET url -> last response (shown instantly, then refr
 async function api(method, url, body, raw) {
   barStart();
   try {
+    const tok = CROSS ? tokenStore.get() : "";
     const res = await fetch(api_(url), {
-      method, credentials: "same-origin",
-      headers: { "x-requested-with": "confiance-dashboard", ...(raw ? { "content-type": "application/octet-stream" } : body ? { "content-type": "application/json" } : {}) },
+      method, credentials: CROSS ? "omit" : "same-origin",
+      headers: { "x-requested-with": "confiance-dashboard", ...(tok ? { authorization: `Bearer ${tok}` } : {}), ...(raw ? { "content-type": "application/octet-stream" } : body ? { "content-type": "application/json" } : {}) },
       body: raw ?? (body ? JSON.stringify(body) : undefined),
     });
     const data = await res.json().catch(() => ({}));
-    if (res.status === 401 && url !== "/api/login") { showLogin(); throw new Error("Signed out"); }
+    if (res.status === 401 && url !== "/api/login") { tokenStore.set(""); showLogin(); throw new Error("Signed out"); }
+    if (CROSS && data.token && /^\/api\/(login|me\/password|me\/2fa\/enable)$/.test(url)) tokenStore.set(data.token);
     if (!res.ok) { const e = new Error(data.error || `HTTP ${res.status}`); e.data = data; throw e; }
     if (data.need2faSetup) { location.hash = "#/account"; }
     if (method === "GET") cache.set(url, data);
@@ -842,7 +848,7 @@ $("#loginForm").onsubmit = async (e) => {
     $("#loginErr").textContent = err.message;
   } finally { btn.classList.remove("busy"); }
 };
-$("#logout").onclick = async () => { await api("POST", "/api/logout").catch(() => {}); showLogin(); };
+$("#logout").onclick = async () => { await api("POST", "/api/logout").catch(() => {}); tokenStore.set(""); showLogin(); };
 
 async function boot() {
   applyStaticText();

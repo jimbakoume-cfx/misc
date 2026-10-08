@@ -1,0 +1,32 @@
+# Optional: host the dashboard on GitHub Pages (free) instead of Netlify. Enable it once in the repository settings:
+# Settings → Pages → Build and deployment → Source: "GitHub Actions". The page then calls the Supabase API directly
+# (bearer token sign-in), so set KIOSK_API below to your function URL.
+name: Publish dashboard to GitHub Pages
+on:
+  push:
+    branches: [main, claude/sweet-goodall-gkwgdw]
+    paths: ["public/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency: { group: pages, cancel-in-progress: true }
+env:
+  KIOSK_API: https://qzkoowbcngcdnhqystwz.supabase.co/functions/v1/kiosk
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: { name: github-pages, url: "${{ steps.deployment.outputs.page_url }}" }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Point the dashboard at the API
+        run: |
+          mkdir -p out && cp -r public/. out/
+          sed -i "s#<meta name=\"kiosk-api\" content=\"\">#<meta name=\"kiosk-api\" content=\"$KIOSK_API\">#" out/index.html
+          grep -q "$KIOSK_API" out/index.html
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: out }
+      - id: deployment
+        uses: actions/deploy-pages@v4

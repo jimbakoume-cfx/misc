@@ -1,44 +1,78 @@
-# Deploying the dashboard (Netlify)
+# Deploying (Supabase backend + static dashboard)
 
-The dashboard + API run on **Netlify**: static dashboard (`public/`), one serverless function
-(`netlify/functions/api.mts`), **Netlify Database** (Postgres, migrations in `netlify/database/migrations/`)
-and **Netlify Blobs** (APK files). Live site: https://confiance-kiosk.netlify.app
+Everything server-side runs on **Supabase** (free plan): Postgres, Storage (APK files), Realtime (instant commands),
+one Edge Function (`supabase/functions/kiosk`, the dashboard API) and pg_cron (hourly alert e-mails).
+Phones check in straight through PostgREST (`kiosk_heartbeat`), so the function only serves the console.
 
-## Environment variables (Site configuration → Environment variables)
-| Variable | Purpose |
+| What | Where |
 |---|---|
-| `SESSION_SECRET` | Signs dashboard sessions. Long random string. **Required.** Changing it signs everyone out. |
-| `PUBLIC_URL` | Public HTTPS address, goes into the QR code, e.g. `https://confiance-kiosk.netlify.app`. |
-| `SUPABASE_URL`, `SUPABASE_KEY` | Instant commands. Your Supabase project URL and its *publishable* key (`sb_publishable_…`). Optional: without them phones are reached at their next 5-minute check-in. |
-| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Only used to create the very first admin when the database has none. Delete `ADMIN_PASSWORD` afterwards. |
+| Project | `confiance-kiosk`, ref `qzkoowbcngcdnhqystwz`, region eu-west-3 (Paris) |
+| API / function | `https://qzkoowbcngcdnhqystwz.supabase.co/functions/v1/kiosk` |
+| Dashboard | `https://confiance-kiosk.netlify.app` (static files, proxied `/api` → the function) |
+| APK downloads | `https://qzkoowbcngcdnhqystwz.supabase.co/storage/v1/object/public/apk/kiosk-agent.apk` |
 
-## First-time setup
-1. Deploy (`netlify deploy --prod`, or connect the repo). Migrations run automatically.
-2. Sign in, then **Settings → Admin PIN** (used on the phone to unlock it) and change your dashboard password by adding a new admin user and removing the old one.
-3. **Groups & apps**: create groups and tick the apps agents may open.
-4. **Add devices**: create a code and scan its QR on each factory-reset phone (see PROVISIONING.md).
+Supabase does not let a function on `*.supabase.co` serve HTML (it rewrites it to plain text), so the console's files
+are hosted on a static host and talk to the function. Two free options are wired up:
 
-The first APK (`releases/kiosk-agent-1.3.4.apk`) is bundled with the deploy and installed as release #1 on first use.
-Upload later versions on the **App versions** page; phones update themselves.
+1. **Netlify (default).** `netlify.toml` publishes `public/` and proxies `/api/*`, `/apk/*` and `/healthz` to the
+   function at the CDN level: no Netlify functions, no invocation cost, same-origin cookies, and phones still running
+   agent 1.3.x (which only know the Netlify address) keep working. Deploy with `netlify deploy --prod --dir=public`
+   or connect the repository.
+2. **GitHub Pages.** `.github/workflows/pages.yml` publishes `public/` with `<meta name="kiosk-api">` pointing at the
+   function (the console then signs in with a bearer token). Enable it once: repository **Settings → Pages → Source:
+   GitHub Actions**. Any other static host works the same way: copy `public/` and set that meta tag.
+
+## First deployment (already done for the project above)
+```bash
+npm i -g supabase            # Supabase CLI, then: supabase login
+supabase link --project-ref qzkoowbcngcdnhqystwz
+supabase db push             # applies supabase/migrations/*.sql
+supabase functions deploy kiosk --no-verify-jwt   # the function does its own sign-in
+```
+Then create the first admin (the function also does this from `ADMIN_EMAIL` / `ADMIN_PASSWORD` secrets if the table is
+empty), sign in, and publish the console files and the current APK:
+```bash
+KIOSK_URL=https://qzkoowbcngcdnhqystwz.supabase.co/functions/v1/kiosk KIOSK_EMAIL=you@… KIOSK_PASSWORD=… \
+  node scripts/publish-dashboard.mjs          # optional: only needed to open the console at the function URL
+# upload releases/kiosk-agent-1.3.4.apk on the Apps page (or scripts/publish-release.mjs)
+```
+Notes for the hosted apply through the Supabase MCP (used for the first deployment): statements containing
+`DELETE`/`TRUNCATE`/`DROP` wait for an interactive confirmation; `supabase db push` has no such limit.
+
+## Secrets (Edge Function → Secrets)
+None are required: the session secret and the cron key are generated on first start and kept in the `settings` table.
+Optional:
+
+| Secret | Purpose |
+|---|---|
+| `RESEND_API_KEY`, `ALERT_FROM` | Alert e-mails (hourly digest to Settings → Alerts e-mails) through resend.com (free: 3 000/month). |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Creates the first admin when the table is empty. Remove afterwards. |
+| `PUBLIC_URL` | Only if the function is reached through another address than `https://<ref>.supabase.co/functions/v1/kiosk`. |
 
 ## Deploying changes
-Do not upload the whole repo folder: `android-agent/` may contain your signing keystore. Deploy only
-`public/`, `netlify/`, `netlify.toml`, `package*.json` and `releases/seed.json` + the seed APK.
+- API: `supabase functions deploy kiosk --no-verify-jwt`.
+- Database: add a file under `supabase/migrations/`, then `supabase db push`.
+- Dashboard: deploy `public/` to the static host (Netlify: push or `netlify deploy`; GitHub Pages: push).
+- Phones: build the APK, upload it on the **Apps** page; phones update themselves.
 
-## Capacity and cost
-Phones check in every 5 minutes → ~58k function calls/day for 200 devices (~1.7M/month). The Netlify **Free**
-plan is too small for that; use a paid plan, or raise the interval (policy `intervalSec`, 60–3600).
-Function request bodies are limited to ~6 MB, enough for the current ~0.6 MB APK.
+## Capacity and cost (free plan)
+- Check-ins go through PostgREST, which has no request cap; they cost only egress (≈1.5 GB/month for 200 phones at
+  10 min). Function invocations (500 000/month) are used by the console only.
+- Realtime allows **200 concurrent connections** on the free plan: phones that cannot join simply poll at the check-in
+  interval (Settings → Phones). Pro ($25/month) allows 500.
+- Storage: 1 GB (each APK version ≈ 1–50 MB). Database: 500 MB (usage rows are ~100 bytes per phone per day).
+- A free project pauses after 7 days without API traffic; phones checking in keep it active.
 
 ## Tests
-`npm ci && npm test` runs the API against an in-memory Postgres (PGlite).
+`npm ci && npm test` runs the API, including the SQL functions, against an in-memory Postgres (PGlite).
+`npm run dev` serves the whole thing locally on http://localhost:8099 (admin@test.com / dev-password-123).
 
-## Instant commands (Supabase Realtime)
-Each phone keeps one live connection to your Supabase project and listens on a private channel whose name is a random secret
-only that phone knows. Pressing a button in the dashboard sends an empty "wake up" ping to that channel (server → Supabase REST
-broadcast), the phone checks in immediately over the normal authenticated API and runs the command. No data travels through
-Supabase, and no secret/service key is needed: only the publishable key, which is safe to embed.
-- Phones that are not live (sleeping, offline) still pick commands up at their next check-in (5 min; 15 min while live).
-- The dashboard shows "⚡ live" per phone and "Phones live" on the Overview.
-- Supabase **Free** allows 200 simultaneous connections (exactly your fleet size); **Pro** ($25/month) allows 500.
-- Project: `confiance-kiosk` (eu-west-3). Test: `node` script in `scripts/` or watch Overview → "Phones live".
+## Moving data from the old Netlify database
+`scripts/migrate-from-netlify.mjs` copies every table (phones keep their tokens, so they stay enrolled):
+```bash
+SOURCE_URL='postgres://…netlify…' TARGET_URL='postgres://postgres.qzkoowbcngcdnhqystwz:…@aws-0-eu-west-3.pooler.supabase.com:5432/postgres' \
+  node scripts/migrate-from-netlify.mjs
+```
+Then upload the current APK again on the Apps page (files lived in Netlify Blobs). Phones on agent 1.3.x keep talking
+to the Netlify address, which proxies to Supabase; once they receive agent 1.4.0 they switch to the Supabase address by
+themselves (`policy.serverUrl`), after which the Netlify proxy rules are no longer needed.

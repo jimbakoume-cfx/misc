@@ -9,7 +9,7 @@ import kotlin.concurrent.thread
 
 /** Reports setup steps to the dashboard's Activity log so a phone that stalls during QR setup can be traced. */
 object Beacon {
-    private const val DEFAULT_SERVER = "https://confiance-kiosk.netlify.app"
+    private const val DEFAULT_SERVER = "https://qzkoowbcngcdnhqystwz.supabase.co/functions/v1/kiosk"
 
     /** Sends in the background. [waitMs] > 0 blocks that long first, so a setup step reports before it hands control back. */
     fun send(ctx: Context, step: String, detail: String = "", waitMs: Long = 0) {
