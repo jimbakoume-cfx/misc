@@ -41,7 +41,6 @@ object Policy {
         UserManager.DISALLOW_SAFE_BOOT,
         UserManager.DISALLOW_ADD_USER,
         UserManager.DISALLOW_REMOVE_USER,
-        UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES,
         UserManager.DISALLOW_UNINSTALL_APPS,
         UserManager.DISALLOW_MODIFY_ACCOUNTS,
         UserManager.DISALLOW_USB_FILE_TRANSFER,
@@ -115,6 +114,11 @@ object Policy {
         }
 
         RESTRICTIONS.forEach { runCatching { dpm.addUserRestriction(admin, it) } }
+        // Not restricted since 1.4.9: the "Install unknown apps" switch for this app must stay usable, so an admin can
+        // authorise it as an update source on phones whose vendor blocks installs from unlisted sources (Samsung Auto
+        // Blocker). Drivers never reach Settings in kiosk mode, so nothing is lost. Cleared explicitly for phones that
+        // were set up by an older version.
+        runCatching { dpm.clearUserRestriction(admin, UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES) }
         if (prefs.disableDebugging) {
             runCatching { dpm.addUserRestriction(admin, UserManager.DISALLOW_DEBUGGING_FEATURES) }
         } else {

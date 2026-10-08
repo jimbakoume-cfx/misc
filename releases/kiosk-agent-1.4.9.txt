@@ -1,0 +1,8 @@
+Package:            com.cofilo.kiosk
+App name:           Confiance Kiosk
+Admin component:    com.cofilo.kiosk/.AdminReceiver
+Version:            1.4.9 (code 22)
+Cert SHA-256 (QR):  XeoIrAWAbYI7udlW8sbtVACe0PkY2EH11nXoQlVJdCU
+Signed with:        kiosk-release.keystore (alias kiosk), created 2026-10-08; NOT the key used for 1.3.4
+SHA-256 (APK):      8bc2c16be5d3ff0d16696841a504ce4d61ebd78cbcc52c0e4aaa53499d633cab
+Changes:            the "Install unknown apps" switch is no longer disabled by the kiosk policy, so Confiance Kiosk can be authorised as an update source
