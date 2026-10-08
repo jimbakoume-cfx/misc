@@ -10,6 +10,8 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Portrait-only phones: the USB setup grants this (appops) so the app can switch auto-rotate off system-wide. -->
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" />
 
     <!-- Telemetry (1.4.0). Runtime permissions are granted silently by the device owner (Policy.apply);
          location is read as "last known" from the data-sync service, so no location foreground-service type is needed. -->
@@ -46,7 +48,7 @@
             android:launchMode="singleTask"
             android:excludeFromRecents="true"
             android:stateNotNeeded="true"
-            android:screenOrientation="unspecified">
+            android:screenOrientation="portrait">
             <intent-filter android:priority="1000">
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.HOME" />
