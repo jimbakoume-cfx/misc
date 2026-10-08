@@ -560,7 +560,7 @@ class MainActivity : Activity() {
                 minLines = 4
                 maxLines = 8
                 gravity = Gravity.TOP or Gravity.START
-                filters = arrayOf(InputFilter.LengthFilter(300))
+                filters = arrayOf<InputFilter>(InputFilter.LengthFilter(300))
             }
             col.addView(input)
             col.addView(Ui.gap(this, 14))

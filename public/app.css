@@ -1,6 +1,6 @@
 /* Confiance Kiosk console: design system */
-@font-face { font-family: "Inter"; font-style: normal; font-weight: 100 900; font-display: swap; src: url(/fonts/inter-latin.woff2) format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
-@font-face { font-family: "Inter"; font-style: normal; font-weight: 100 900; font-display: swap; src: url(/fonts/inter-latin-ext.woff2) format("woff2"); unicode-range: U+0100-02AF, U+0304, U+0308, U+0329, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "Inter"; font-style: normal; font-weight: 100 900; font-display: swap; src: url(fonts/inter-latin.woff2) format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "Inter"; font-style: normal; font-weight: 100 900; font-display: swap; src: url(fonts/inter-latin-ext.woff2) format("woff2"); unicode-range: U+0100-02AF, U+0304, U+0308, U+0329, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
 
 :root {
   color-scheme: light;
@@ -201,3 +201,30 @@ pre.box { white-space: pre-wrap; font: 12.5px ui-monospace, Menlo, Consolas, mon
 .login-art h2 { margin-top: 44px; }
 .formlogo { display: none; width: 190px; margin: 0 auto 28px; }
 @media (max-width: 860px) { .formlogo { display: block; } }
+
+
+/* ---------- v2 additions ---------- */
+.linkbtn { border: 0; background: none; color: var(--focus); font: inherit; cursor: pointer; padding: 0; } .linkbtn:hover { text-decoration: underline; }
+.userbox .btn.quiet.lang { font-size: 12px; font-weight: 600; padding: 0 8px; width: auto; }
+.ic.neutral { background: var(--surface-3); color: var(--text-3); }
+.strip .split { margin-top: 10px; }
+.net { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); font-size: 13px; } .net svg { width: 16px; height: 16px; color: var(--text-3); } .net.wifi svg { color: var(--info); } .net.cellular svg { color: var(--brand); } .net.none svg { color: var(--bad); }
+.datacell { display: inline-flex; flex-direction: column; gap: 4px; min-width: 84px; } .datacell b { font-weight: 600; font-size: 13px; } .datacell i { display: flex; height: 5px; width: 84px; border-radius: 999px; overflow: hidden; background: var(--surface-3); gap: 1px; } .datacell em { display: block; height: 100%; } .datacell em.m { background: #2a78d6; } .datacell em.w { background: #eb6834; } .datacell.over b { color: var(--bad); }
+tr.lostrow td:nth-child(2) b::before, .devcard.lostrow .dev b::before { content: ""; }
+.toplist { padding: 6px 0; } .topitem { display: grid; grid-template-columns: minmax(90px, 1fr) 2fr auto; gap: 12px; align-items: center; padding: 8px 20px; cursor: pointer; } .topitem:hover { background: var(--surface-2); } .topitem .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; } .topitem i { display: block; height: 8px; border-radius: 999px; background: var(--surface-3); overflow: hidden; } .topitem i b { display: block; height: 100%; background: #2a78d6; border-radius: 999px; } .topitem .val { font-variant-numeric: tabular-nums; color: var(--text-2); font-size: 13px; } .topitem .val.over { color: var(--bad); font-weight: 600; }
+.seg.sm button { height: 26px; padding: 0 10px; font-size: 12.5px; }
+.datasum { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; } .datasum > div { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; } .datasum .k { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-3); } .datasum .k i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; } .datasum b { display: block; font-size: 18px; margin-top: 4px; font-variant-numeric: tabular-nums; } .datasum b.over { color: var(--bad); } .datasum .hint { margin-top: 4px; }
+.budget { height: 6px; border-radius: 999px; background: var(--surface-3); overflow: hidden; margin-top: 8px; } .budget i { display: block; height: 100%; background: var(--ok); border-radius: 999px; } .budget i.warn { background: #f79009; } .budget i.over { background: var(--bad); }
+.chartwrap { margin-top: 10px; } .chart { width: 100%; height: auto; display: block; } .chart .grid { stroke: var(--border); stroke-width: 1; } .chart .axis { stroke: var(--border-strong); stroke-width: 1; } .chart .tick { font-size: 10px; fill: var(--text-3); font-family: inherit; } .chart .bar:hover rect:not(.hit) { filter: brightness(.85); }
+.chartlegend span { display: inline-flex; align-items: center; gap: 6px; } .chartlegend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.subh { font-size: 13px; font-weight: 600; color: var(--text-2); margin: 16px 0 6px; }
+.apptime > div { display: grid; grid-template-columns: minmax(100px, 1fr) 2fr auto; gap: 10px; align-items: center; padding: 5px 0; font-size: 13px; } .apptime i { display: block; height: 6px; border-radius: 999px; background: var(--surface-3); overflow: hidden; } .apptime i b { display: block; height: 100%; background: var(--brand); border-radius: 999px; } .apptime span:last-child { color: var(--text-3); font-variant-numeric: tabular-nums; }
+.banner .btn { margin-left: auto; align-self: center; flex: none; }
+/* phone-sized screens: cards instead of the wide table */
+.devcards { display: none; }
+.devcard { padding: 14px 16px; cursor: pointer; } .devcard:hover { border-color: var(--border-strong); } .devmeta { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin-top: 10px; font-size: 13px; } .devcards .card + .card { margin-top: 10px; }
+@media (max-width: 720px) { .devtable { display: none; } .devcards { display: block; } .datasum { grid-template-columns: 1fr 1fr; } .topitem { grid-template-columns: 1fr auto; } .topitem i { display: none; } .toolbar .seg { order: 3; width: 100%; } }
+.pill.data_budget, .pill.battery { color: var(--warn); } .pill.sim_changed, .pill.unmanaged, .pill.offline { color: var(--bad); } .pill.problem { color: var(--info); }
+
+.topbar .btn .lbl { margin-left: 6px; }
+@media (max-width: 640px) { .topbar .btn .lbl { display: none; } .topbar .btn { padding: 0 10px; } }

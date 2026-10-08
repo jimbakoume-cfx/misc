@@ -275,7 +275,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
     sweptAt = now();
     await run("SELECT kiosk_sweep()");
   }
-  const alertRows = (rows: Row[]) => rows.map((a) => ({ id: a.id, ts: a.ts, deviceId: a.device_id, deviceName: a.device_name ?? null, kind: a.kind, message: a.message, active: !!a.active, clearedAt: a.cleared_at }));
+  const alertRows = (rows: Row[]) => rows.map((a) => ({ id: a.id, ts: a.ts, deviceId: a.device_id, deviceName: a.device_name ?? null, driverName: a.driver_name ?? "", kind: a.kind, message: a.message, active: !!a.active, clearedAt: a.cleared_at }));
   async function emailAlerts() {
     const to = (await setting("alert_emails")).split(/[,;\s]+/).filter((x) => x.includes("@"));
     const key = env.RESEND_API_KEY;
@@ -474,7 +474,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
     const usage = await monthUsage();
     const counts = { total: devices.length, online: 0, stale: 0, offline: 0, lowBattery: 0, outdated: 0, notLocked: 0, pendingApproval: 0, lost: 0, problems: 0 };
     let mobile = 0, wifi = 0;
-    const top: { id: number; name: string; mobileBytes: number }[] = [];
+    const top: { id: number; name: string; driverName: string; mobileBytes: number }[] = [];
     for (const d of devices) {
       const st = json(d.status, {});
       counts[statusOf(d) as "online" | "stale" | "offline"]++;
@@ -484,12 +484,12 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
       if (!d.approved) counts.pendingApproval++;
       if (d.lost_mode) counts.lost++;
       if (d.problem) counts.problems++;
-      const u = usage.get(Number(d.id)); if (u) { mobile += u.mobileBytes; wifi += u.wifiBytes; top.push({ id: d.id, name: d.name, mobileBytes: u.mobileBytes }); }
+      const u = usage.get(Number(d.id)); if (u) { mobile += u.mobileBytes; wifi += u.wifiBytes; top.push({ id: d.id, name: d.name, driverName: d.driver_name ?? "", mobileBytes: u.mobileBytes }); }
     }
     top.sort((a, b) => b.mobileBytes - a.mobileBytes);
-    const alerts = alertRows(await all("SELECT a.*, d.name device_name FROM alerts a LEFT JOIN devices d ON d.id=a.device_id WHERE a.active=1 ORDER BY a.ts DESC LIMIT 50"));
+    const alerts = alertRows(await all("SELECT a.*, d.name device_name, d.driver_name FROM alerts a LEFT JOIN devices d ON d.id=a.device_id WHERE a.active=1 ORDER BY a.ts DESC LIMIT 50"));
     return {
-      ...counts, currentVersion: rel?.version_name ?? null, intervalSec: cfg.hb, push: pushOn,
+      ...counts, currentVersion: rel?.version_name ?? null, currentVersionCode: rel?.version_code ?? 0, intervalSec: cfg.hb, push: pushOn,
       live: devices.filter((d) => json(d.status, {}).pushConnected).length,
       data: { mobileBytes: mobile, wifiBytes: wifi, budgetMb: num(await setting("data_budget_mb", "2048")), top: top.slice(0, 5) },
       alerts,
@@ -802,7 +802,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
   add("GET", "/api/alerts", "read", async (c) => {
     await sweep();
     const where = c.query.get("all") === "1" ? "" : "WHERE a.active=1";
-    return alertRows(await all(`SELECT a.*, d.name device_name FROM alerts a LEFT JOIN devices d ON d.id=a.device_id ${where} ORDER BY a.active DESC, a.ts DESC LIMIT 300`));
+    return alertRows(await all(`SELECT a.*, d.name device_name, d.driver_name FROM alerts a LEFT JOIN devices d ON d.id=a.device_id ${where} ORDER BY a.active DESC, a.ts DESC LIMIT 300`));
   });
   add("POST", "/api/alerts/:id/dismiss", "write", async (c) => {
     await run("UPDATE alerts SET active=0, cleared_at=? WHERE id=?", now(), Number(c.params.id));

@@ -1,14 +1,14 @@
 <!doctype html>
-<html lang="en">
+<html lang="fr">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#081a51">
 <title>Confiance Kiosk</title>
-<link rel="icon" href="/logo-mark.svg" type="image/svg+xml">
-<link rel="preload" href="/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/app.css">
+<link rel="icon" href="logo-mark.svg" type="image/svg+xml">
+<link rel="preload" href="fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="app.css">
 </head>
 <body>
 <div id="loadbar"><i></i></div>
@@ -17,27 +17,28 @@
 <section id="login" class="hidden">
   <div class="login-art">
     <div>
-      <img class="biglogo" src="/logo-white.svg" alt="Confiance, la mobilité en toute sérénité">
-      <h2>Your whole phone fleet, under control.</h2>
-      <p>Lock phones to the apps your team needs, push changes instantly and keep every device secure from one place.</p>
+      <img class="biglogo" src="logo-white.svg" alt="Confiance, la mobilité en toute sérénité">
+      <h2 data-i18n="login.h2">Toute votre flotte de téléphones, sous contrôle.</h2>
+      <p data-i18n="login.p">Verrouillez les téléphones sur les applications utiles, poussez des changements en quelques secondes et suivez la consommation de données.</p>
       <ul>
-        <li><svg class="i" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg> Phones that cannot be taken out of kiosk mode</li>
-        <li><svg class="i" viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z"/></svg> Commands that reach phones in seconds</li>
-        <li><svg class="i" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg> Set up 200 phones from one console</li>
+        <li><svg class="i" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg> <span data-i18n="login.f1">Des téléphones impossibles à sortir du mode kiosque</span></li>
+        <li><svg class="i" viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z"/></svg> <span data-i18n="login.f2">Des commandes qui arrivent en quelques secondes</span></li>
+        <li><svg class="i" viewBox="0 0 24 24"><path d="M2 20h.01M7 20v-4M12 20v-8M17 20V8M22 4v16"/></svg> <span data-i18n="login.f3">Données mobiles suivies téléphone par téléphone</span></li>
       </ul>
     </div>
     <small>Confiance · La mobilité en toute sérénité</small>
   </div>
   <div class="login-panel">
     <form id="loginForm" class="login-card" autocomplete="on">
-      <img class="formlogo" src="/logo.svg" alt="Confiance">
-      <h1>Sign in</h1>
-      <p class="sub">Welcome back. Enter your details to open the console.</p>
-      <div class="field"><label for="email">Email</label><input id="email" type="email" required autocomplete="username" placeholder="you@company.com"></div>
-      <div class="field"><label for="password">Password</label><input id="password" type="password" required autocomplete="current-password" placeholder="••••••••••••"></div>
-      <div id="codeRow" class="field hidden"><label for="code">6-digit code (or a recovery code)</label><input id="code" inputmode="numeric" autocomplete="one-time-code" placeholder="123456"></div>
+      <img class="formlogo" src="logo.svg" alt="Confiance">
+      <h1 data-i18n="login.title">Connexion</h1>
+      <p class="sub" data-i18n="login.sub">Bon retour. Entrez vos identifiants pour ouvrir la console.</p>
+      <div class="field"><label for="email" data-i18n="login.email">E-mail</label><input id="email" type="email" required autocomplete="username" placeholder="vous@confiance-app.com"></div>
+      <div class="field"><label for="password" data-i18n="login.password">Mot de passe</label><input id="password" type="password" required autocomplete="current-password" placeholder="••••••••••••"></div>
+      <div id="codeRow" class="field hidden"><label for="code" data-i18n="login.code">Code à 6 chiffres (ou code de secours)</label><input id="code" inputmode="numeric" autocomplete="one-time-code" placeholder="123456"></div>
       <p id="loginErr" class="hint" style="color:var(--bad);min-height:20px" role="alert"></p>
-      <button class="btn w100" id="loginBtn" style="margin-top:6px;height:40px">Sign in</button>
+      <button class="btn w100" id="loginBtn" style="margin-top:6px;height:40px" data-i18n="login.btn">Se connecter</button>
+      <p class="hint" style="text-align:center;margin-top:18px"><button type="button" class="linkbtn" id="langBtn">English</button></p>
     </form>
   </div>
 </section>
@@ -47,12 +48,13 @@
   <aside id="side">
     <div class="brand">
       <svg class="mark" viewBox="350 0 492 548" aria-hidden="true"><path d="M804.4 136A227.5 227.5 0 0 0 412.7 361.2M571.2 493.7A227.5 227.5 0 0 0 804.4 408" fill="none" stroke="currentColor" stroke-width="89"/><path fill="currentColor" fill-rule="evenodd" d="M614 155C658 155 695 190 695 235C695 275 665 310 612 362C560 310 535 275 535 235C535 190 570 155 614 155ZM614 197A38 38 0 1 0 614 273A38 38 0 1 0 614 197Z"/><path fill="currentColor" d="M395 428L380 397C420 350 480 325 548 305L548 316C490 340 430 375 395 428ZM505 377C525 360 545 345 565 333L572 345C555 360 540 372 527 380ZM438 472C445 440 460 418 475 402L500 405C480 425 465 450 460 495ZM610 360C540 405 510 460 530 520C540 535 570 540 588 546C555 520 548 470 580 425C595 400 610 385 612 360Z"/></svg>
-      <div><b>CONFIANCE</b><span>Kiosk · Fleet console</span></div>
+      <div><b>CONFIANCE</b><span>Kiosk · Console flotte</span></div>
     </div>
     <nav id="nav" aria-label="Main"></nav>
     <div class="userbox">
       <div class="avatar" id="avatar">?</div>
       <div class="who"><b id="whoEmail"></b><span id="whoRole"></span></div>
+      <button class="btn quiet lang" id="langBtn2" title="Language">EN</button>
       <button class="btn quiet icon" id="logout" title="Sign out" aria-label="Sign out"><svg class="i" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></button>
     </div>
   </aside>
@@ -72,6 +74,7 @@
 <dialog id="cfm"><div class="dlg" id="cfmBody"></div></dialog>
 <div id="toasts" aria-live="polite"></div>
 
-<script src="/app.js" defer></script>
+<script src="i18n.js"></script>
+<script src="app.js" defer></script>
 </body>
 </html>
