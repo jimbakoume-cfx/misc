@@ -46,6 +46,8 @@ import kotlin.concurrent.thread
 class MainActivity : Activity() {
     private lateinit var root: LinearLayout
     private var adminTaps = 0
+    private var insetTop = 0
+    private var insetBottom = 0
     private var lastTap = 0L
 
     private var dialogOpen = false          // don't auto-launch while a settings/admin dialog is showing
@@ -69,8 +71,26 @@ class MainActivity : Activity() {
             setBackgroundColor(Ui.bg)
         }
         setContentView(root)
-        window.statusBarColor = Ui.navy
-        window.navigationBarColor = Ui.bg
+        // Edge to edge with the system-bar insets applied by hand: the header absorbs the status bar, the bottom
+        // bar the gesture bar, so nothing sits under them on any phone.
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT
+        if (Build.VERSION.SDK_INT >= 30) {
+            window.setDecorFitsSystemWindows(false)
+            window.insetsController?.setSystemBarsAppearance(
+                android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS, android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS)
+            root.setOnApplyWindowInsetsListener { _, insets ->
+                val bars = insets.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout())
+                if (bars.top != insetTop || bars.bottom != insetBottom) {
+                    insetTop = bars.top; insetBottom = bars.bottom; Ui.insetBottom = bars.bottom
+                    render()
+                }
+                insets
+            }
+        } else {
+            window.statusBarColor = Ui.navy
+            window.navigationBarColor = Ui.bg
+        }
         val p = Prefs(this)
         if (p.enrolled || p.hasEnrollConfig) AgentService.start(this)
     }
@@ -188,11 +208,10 @@ class MainActivity : Activity() {
         val soft = Color.parseColor("#C9D3F5")
         val box = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            background = GradientDrawable().apply {
-                setColor(Ui.navy)
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(Ui.navy, Ui.navyDeep)).apply {
                 cornerRadii = floatArrayOf(0f, 0f, 0f, 0f, Ui.dpf(ctx, 28), Ui.dpf(ctx, 28), Ui.dpf(ctx, 28), Ui.dpf(ctx, 28))
             }
-            setPadding(dp(22), dp(18), dp(22), dp(22))
+            setPadding(dp(Ui.s5), dp(Ui.s4) + insetTop, dp(Ui.s5), dp(Ui.s5))
         }
         // Logo mark + wordmark lockup, online chip on the right.
         val top = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
@@ -275,7 +294,7 @@ class MainActivity : Activity() {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(8), dp(12), dp(12))
+            setPadding(dp(12), dp(8), dp(12), dp(12) + insetBottom)
         }
         fun item(label: String, onClick: () -> Unit) {
             row.addView(Ui.secondaryButton(this, label, onClick).apply {
@@ -336,15 +355,18 @@ class MainActivity : Activity() {
             val tile = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                setPadding(dp(10), dp(20), dp(10), dp(18))
-                background = Ui.tappable(this@MainActivity, Color.WHITE, 22, Ui.line)
-                elevation = Ui.dpf(this@MainActivity, 1)
+                setPadding(dp(10), dp(22), dp(10), dp(18))
+                background = Ui.tappable(this@MainActivity, Color.WHITE, Ui.r3, Ui.line)
+                elevation = Ui.dpf(this@MainActivity, 2)
                 alpha = if (launch == null) 0.5f else 1f
                 isClickable = true; isFocusable = true
             }
-            val icon = ImageView(this)
+            val icon = ImageView(this).apply {
+                background = Ui.round(this@MainActivity, Ui.surface2, 22)
+                setPadding(dp(12), dp(12), dp(12), dp(12))
+            }
             runCatching { icon.setImageDrawable(pm.getApplicationIcon(pkg)) }
-            tile.addView(icon, LinearLayout.LayoutParams(dp(64), dp(64)))
+            tile.addView(icon, LinearLayout.LayoutParams(dp(80), dp(80)))
             tile.addView(Ui.text(this, label, 15f, Ui.ink, true).apply {
                 gravity = Gravity.CENTER
                 maxLines = 2
@@ -706,7 +728,13 @@ class MainActivity : Activity() {
 
     /** Lets the system Wi-Fi panel open (the Settings app is otherwise blocked) and re-locks when we come back. */
     private fun openWifiPanel() {
-        openTemporarily(Intent(Settings.Panel.ACTION_INTERNET_CONNECTIVITY), "com.android.settings") {
+        // The quick panel lives in different packages depending on the brand (Samsung ships its own Settings), so the
+        // intent is resolved first and whichever package answers is allowed in the lock task for the time being.
+        val candidates = listOf(Intent(Settings.Panel.ACTION_INTERNET_CONNECTIVITY), Intent(Settings.Panel.ACTION_WIFI), Intent(Settings.ACTION_WIFI_SETTINGS))
+        val intent = candidates.firstOrNull { it.resolveActivity(packageManager) != null } ?: candidates.last()
+        val pkgs = (listOfNotNull(intent.resolveActivity(packageManager)?.packageName) +
+            listOf("com.android.settings", "com.samsung.android.app.settings", "com.android.settings.intelligence")).distinct().toTypedArray()
+        openTemporarily(intent, *pkgs) {
             Toast.makeText(this, tr("Could not open Wi-Fi settings", "Impossible d'ouvrir les réglages Wi-Fi"), Toast.LENGTH_LONG).show()
         }
     }

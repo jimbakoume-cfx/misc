@@ -18,11 +18,26 @@ import android.widget.ScrollView
 import android.widget.TextView
 import java.util.Locale
 
-/** Confiance brand colours and a few view helpers, so screens stay short and consistent. */
+/**
+ * Design system of the kiosk app, in code (no resources, no AndroidX):
+ *  - colours: Confiance navy/blue brand, neutral surfaces, semantic good/warn/bad pairs;
+ *  - spacing on a 4 dp grid (s1 = 4 … s6 = 32), radii r1 = 12, r2 = 16, r3 = 24;
+ *  - type: title 22/medium, body 15, label 13 muted, caption 12;
+ *  - surfaces: cards on a tinted background, one bottom sheet for every secondary screen;
+ *  - safe areas: the kiosk screen and the sheets pad themselves with the system-bar insets.
+ */
 object Ui {
     val navy = Color.parseColor("#081A51")
+    val navyDeep = Color.parseColor("#050F33")
     val blue = Color.parseColor("#1E4FD8")
+    val blueSoft = Color.parseColor("#E8EEFF")
     val bg = Color.parseColor("#F3F5FA")
+    val surface2 = Color.parseColor("#EEF2FA")
+    val handle = Color.parseColor("#CBD5E1")
+    const val s1 = 4; const val s2 = 8; const val s3 = 12; const val s4 = 16; const val s5 = 24; const val s6 = 32
+    const val r1 = 12; const val r2 = 16; const val r3 = 24
+    /** Bottom inset (gesture / navigation bar) the activity measured; sheets pad their footer with it. */
+    @Volatile var insetBottom = 0
     val card = Color.WHITE
     val ink = Color.parseColor("#0F172A")
     val muted = Color.parseColor("#64748B")
@@ -134,27 +149,54 @@ object Ui {
         setPadding(0, dp(ctx, 16), 0, dp(ctx, 4))
     }
 
-    /** A rounded bottom-sheet-like dialog (scrolls when taller than the screen). Returns the dialog and the content column to fill. */
+    /**
+     * Bottom sheet: full width, rounded top corners, grab handle, title, scrollable content capped at 86% of the
+     * screen, footer padded with the navigation-bar inset, slides up. Returns the dialog and the column to fill.
+     */
     fun sheet(ctx: Context, title: String, onDismiss: () -> Unit = {}): Pair<Dialog, LinearLayout> {
         val dlg = Dialog(ctx)
         dlg.requestWindowFeature(Window.FEATURE_NO_TITLE)
+        val metrics = ctx.resources.displayMetrics
+        val maxH = (metrics.heightPixels * 0.86f).toInt()
+        val sheetBg = GradientDrawable().apply {
+            setColor(Color.WHITE)
+            val r = dpf(ctx, 28)
+            cornerRadii = floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f)
+        }
+        val outer = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            background = sheetBg
+            setPadding(0, dp(ctx, s2), 0, dp(ctx, s4) + insetBottom)
+        }
+        // grab handle
+        outer.addView(View(ctx).apply { background = round(ctx, handle, 4) },
+            LinearLayout.LayoutParams(dp(ctx, 40), dp(ctx, 4)).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = dp(ctx, s3) })
+        outer.addView(text(ctx, title, 22f, ink, true).apply { setPadding(dp(ctx, s5), 0, dp(ctx, s5), dp(ctx, s2)) })
         val col = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            background = round(ctx, Color.WHITE, 24)
-            setPadding(dp(ctx, 22), dp(ctx, 20), dp(ctx, 22), dp(ctx, 18))
+            setPadding(dp(ctx, s5), 0, dp(ctx, s5), dp(ctx, s2))
         }
-        col.addView(text(ctx, title, 20f, ink, true))
-        col.addView(gap(ctx, 10))
-        val scroll = ScrollView(ctx).apply {
+        val scroll = object : ScrollView(ctx) {
+            override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                super.onMeasure(widthMeasureSpec, android.view.View.MeasureSpec.makeMeasureSpec(maxH - dp(ctx, 96) - insetBottom, android.view.View.MeasureSpec.AT_MOST))
+            }
+        }.apply {
             overScrollMode = View.OVER_SCROLL_NEVER
-            isFillViewport = false
+            isVerticalScrollBarEnabled = false
             addView(col, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
-        dlg.setContentView(scroll)
+        outer.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        dlg.setContentView(outer)
         dlg.window?.apply {
-            setBackgroundDrawable(InsetDrawable(ColorDrawable(Color.TRANSPARENT), dp(ctx, 16)))
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
             setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             setGravity(Gravity.BOTTOM)
+            setDimAmount(0.45f)
+            attributes = attributes.apply { windowAnimations = android.R.style.Animation_InputMethod }
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                setDecorFitsSystemWindows(false)
+                navigationBarColor = Color.TRANSPARENT
+            }
         }
         dlg.setOnDismissListener { onDismiss() }
         return dlg to col
