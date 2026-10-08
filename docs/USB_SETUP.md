@@ -26,5 +26,7 @@ You need: a Windows PC (or Mac/Linux), a USB **data** cable, and the enrollment 
 - *"No phone found"*: use a data cable (not charge-only), re-do step 3–4, tap Autoriser.
 - *"…there are already some accounts on the device"*: remove the account (Paramètres → Comptes), or reset and skip the account steps.
 - *"Install failed"*: accept any Play Protect or "install via USB" question on the phone and run again.
-- Samsung **Auto Blocker** (Paramètres → Sécurité et confidentialité) blocks USB commands. Switch it off during setup.
+- Samsung **Auto Blocker** (Paramètres → Sécurité et confidentialité) blocks USB commands and every later app update or
+  install from the dashboard (the phone then reports "INSTALL_FAILED_VERIFICATION_FAILURE: Install not allowed").
+  Switch it off during setup and leave it off.
 - To start over on a phone: factory-reset it.

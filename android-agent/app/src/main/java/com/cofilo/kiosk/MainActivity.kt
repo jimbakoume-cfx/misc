@@ -530,7 +530,12 @@ class MainActivity : Activity() {
                     Toast.makeText(this, tr("Checking with the dashboard…", "Vérification auprès du tableau de bord…"), Toast.LENGTH_SHORT).show()
                 }
             }
-            if (p.lastError.startsWith("install ")) col.addView(Ui.text(this, p.lastError, 12f, Ui.muted).apply { setPadding(0, dp(4), 0, dp(4)) })
+            if (p.lastError.startsWith("install ")) {
+                val blocked = p.lastError.contains("VERIFICATION_FAILURE") || p.lastError.contains("Install not allowed")
+                val text = if (blocked) tr("Update blocked by Samsung Auto Blocker. Switch it off: Settings › Security and privacy › Auto Blocker, then try again.",
+                    "Mise à jour bloquée par Auto Blocker (Samsung). Désactivez-le : Paramètres › Sécurité et confidentialité › Auto Blocker, puis réessayez.") else p.lastError
+                col.addView(Ui.text(this, text, 12f, Ui.muted).apply { setPadding(0, dp(4), 0, dp(4)) })
+            }
             col.addView(infoRow(tr("Last check-in", "Dernière connexion"),
                 if (p.lastCheckIn > 0) DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(p.lastCheckIn)) else tr("never", "jamais")))
             col.addView(infoRow(tr("Network", "Réseau"), networkLabel()))
