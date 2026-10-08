@@ -705,18 +705,25 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
     return { ok: true };
   });
 
+  // Catalogue of apps: everything the phones reported (system apps flagged), the managed APKs, and the fleet-wide
+  // allowed list, with `allowed` = allowed on every phone (Apps page).
   add("GET", "/api/apps", "read", async () => {
-    const seen = new Map<string, { pkg: string; label: string; devices: number }>();
+    const seen = new Map<string, { pkg: string; label: string; devices: number; system: boolean; allowed: boolean }>();
+    const globalApps = cleanApps(json(await setting("allowed_apps", "[]"), []));
+    const allowed = new Set(globalApps.map((a) => a.pkg));
     for (const d of await all("SELECT apps FROM devices")) {
-      for (const a of json(d.apps, []) as { pkg: string; label: string }[]) {
-        const cur = seen.get(a.pkg) ?? { pkg: a.pkg, label: a.label, devices: 0 };
+      for (const a of json(d.apps, []) as { pkg: string; label: string; system?: boolean }[]) {
+        if (!a?.pkg) continue;
+        const cur = seen.get(a.pkg) ?? { pkg: a.pkg, label: a.label || a.pkg, devices: 0, system: false, allowed: allowed.has(a.pkg) };
         cur.devices++;
+        if (a.system) cur.system = true;
         seen.set(a.pkg, cur);
       }
     }
     for (const m of await all("SELECT DISTINCT ON (pkg) pkg, label FROM managed_apps ORDER BY pkg, version_code DESC")) {
-      if (!seen.has(m.pkg)) seen.set(m.pkg, { pkg: m.pkg, label: m.label || m.pkg, devices: 0 });
+      if (!seen.has(m.pkg)) seen.set(m.pkg, { pkg: m.pkg, label: m.label || m.pkg, devices: 0, system: false, allowed: allowed.has(m.pkg) });
     }
+    for (const a of globalApps) if (!seen.has(a.pkg)) seen.set(a.pkg, { pkg: a.pkg, label: a.label, devices: 0, system: false, allowed: true });
     return [...seen.values()].sort((a, b) => a.label.localeCompare(b.label));
   });
 
@@ -866,6 +873,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
     wifiSsid: await setting("wifi_ssid"),
     wifiPasswordSet: !!(await setting("wifi_password")),
     dataBudgetMb: num(await setting("data_budget_mb", "2048")),
+    allowedApps: cleanApps(json(await setting("allowed_apps", "[]"), [])),
     offlineAlertHours: num(await setting("offline_alert_hours", "12")),
     alertEmails: await setting("alert_emails"),
     driverWifi: (await setting("driver_wifi", "1")) === "1",
@@ -907,6 +915,12 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
     if ("wifiSsid" in b) await setSetting("wifi_ssid", String(b.wifiSsid).trim());
     if ("wifiPassword" in b && b.wifiPassword !== "") await setSetting("wifi_password", String(b.wifiPassword));
     if ("dataBudgetMb" in b) { await setSetting("data_budget_mb", String(Math.max(0, Math.min(num(b.dataBudgetMb), 1_000_000)))); policyChanged = true; }
+    if ("allowedApps" in b) {
+      // apps every phone may open, on top of its group's list
+      const list = cleanApps(b.allowedApps);
+      await setSetting("allowed_apps", JSON.stringify(list)); policyChanged = true;
+      await audit(who(c), "setting-allowed-apps", list.map((a) => a.pkg).join(", ").slice(0, 300));
+    }
     if ("offlineAlertHours" in b) await setSetting("offline_alert_hours", String(Math.max(1, Math.min(num(b.offlineAlertHours, 12), 720))));
     if ("alertEmails" in b) await setSetting("alert_emails", String(b.alertEmails).trim().slice(0, 500));
     if ("driverWifi" in b) { await setSetting("driver_wifi", b.driverWifi ? "1" : "0"); policyChanged = true; }

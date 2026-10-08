@@ -160,6 +160,18 @@ test("policy version changes when admin edits; device override wins over group",
   assert.equal(apps.body[0].pkg, "com.company.crm");
 });
 
+test("apps allowed on every phone (Apps page) are merged into each phone's list and shown in the catalogue", async () => {
+  await call("PUT", "/api/settings", { token: admin, body: { allowedApps: [{ pkg: "com.android.chrome", label: "Chrome" }, { pkg: "bad pkg!", label: "x" }] } });
+  const hb = await call("POST", "/api/device/heartbeat", { token: deviceToken, body: { status: {} } });
+  assert.deepEqual(hb.body.policy.allowedApps, [{ pkg: "com.android.chrome", label: "Chrome" }, { pkg: "com.other.app", label: "Other" }]);
+  const apps = await call("GET", "/api/apps", { token: admin });
+  assert.equal(apps.body.find((a) => a.pkg === "com.android.chrome").allowed, true);
+  assert.equal(apps.body.find((a) => a.pkg === "com.company.crm").allowed, false);
+  assert.deepEqual((await call("GET", "/api/settings", { token: admin })).body.allowedApps, [{ pkg: "com.android.chrome", label: "Chrome" }]);
+  await call("PUT", "/api/settings", { token: admin, body: { allowedApps: [] } });
+  assert.deepEqual((await call("POST", "/api/device/heartbeat", { token: deviceToken, body: { status: {} } })).body.policy.allowedApps, [{ pkg: "com.other.app", label: "Other" }]);
+});
+
 test("commands are delivered once and acked", async () => {
   assert.equal((await call("POST", `/api/devices/${deviceId}/commands`, { token: admin, body: { type: "nonsense" } })).status, 400);
   assert.equal((await call("POST", "/api/devices/9999/commands", { token: admin, body: { type: "reboot" } })).status, 404);

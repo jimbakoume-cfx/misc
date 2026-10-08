@@ -96,6 +96,7 @@ Policy rules for the agent:
   Supabase). `rest`: store when present; clear when absent.
 - `driverWifi`: when true the Settings sheet offers "Wi-Fi networks" to the driver without a PIN.
 - `dispatchPhone`: when non-empty, show a "Call dispatch" action that dials it (dialer temporarily allowed in lock task).
+- `allowedApps` = the fleet-wide list (Apps page) followed by the group's list or the phone's own override.
 - `update` (1.4.2+): present when a newer kiosk release exists and auto-update is on; the agent installs it
   itself (retrying every 10 minutes while it fails) and the app's Settings screen offers "Update now".
 - `installApps`: for each entry whose package is missing or has an installed `versionCode` lower than the given

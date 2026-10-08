@@ -397,8 +397,9 @@ async function openDevice(id) {
   openDlg(`<div class="hd"><div class="grow"><h2>${esc(row?.driverName || row?.name || "")}</h2></div><button class="btn quiet icon" data-close aria-label="${esc(t("common.close"))}">${ic("x")}</button></div><div class="bd"><div class="sk t" style="width:40%"></div><div class="sk t"></div><div class="sk t"></div><div class="sk h" style="width:100%"></div></div>`, true);
   let d, apps, gs, usage, managed;
   try { [d, apps, gs, usage, managed] = await Promise.all([get(`/api/devices/${id}`), get("/api/apps"), get("/api/groups"), get(`/api/devices/${id}/usage?days=30`), get("/api/managed-apps")]); } catch (e) { closeDlg(); return fail(e); }
+  const everyone = apps.filter((a) => a.allowed);
   const eff = d.effective.allowedApps.map((a) => a.pkg);
-  const known = new Map(apps.map((a) => [a.pkg, a.label])); d.effective.allowedApps.forEach((a) => known.set(a.pkg, a.label));
+  const known = new Map(apps.filter((a) => !a.allowed).map((a) => [a.pkg, a.label])); d.effective.allowedApps.forEach((a) => { if (!everyone.some((x) => x.pkg === a.pkg)) known.set(a.pkg, a.label); });
   const kv = (k, v) => `<dt>${k}</dt><dd>${v}</dd>`;
   const budget = usage.budgetMb || 0, overPct = budget ? Math.round((usage.month.mobileBytes / (budget * 1048576)) * 100) : 0;
   const today = usage.days.find((x) => x.day === usage.today);
@@ -452,7 +453,7 @@ async function openDevice(id) {
       <div class="field"><label for="dGroup">${t("d.f.group")}</label><select id="dGroup" ${ro()}><option value="">${t("d.f.group.none")}</option>${gs.map((g) => `<option value="${g.id}" ${g.id === d.groupId ? "selected" : ""}>${esc(g.name)}</option>`).join("")}</select></div>
       <div class="field"><label>${t("d.f.apps")}</label>
         ${check("dOverride", t("d.f.override"), t("d.f.override.h"), !!d.allowedOverride, ro())}
-        <div class="apps" id="dApps">${[...known].map(([p, l]) => `<label><input type="checkbox" value="${esc(p)}" data-label="${esc(l)}" ${eff.includes(p) ? "checked" : ""} ${ro()}> ${esc(l)} <small>${esc(p)}${managed.some((m) => m.pkg === p) ? ` · ${ic("pkg")}` : ""}</small></label>`).join("") || `<label class="muted">${t("d.f.noapps")}</label>`}</div></div>
+        <div class="apps" id="dApps">${[...known].map(([p, l]) => `<label><input type="checkbox" value="${esc(p)}" data-label="${esc(l)}" ${eff.includes(p) ? "checked" : ""} ${ro()}> ${esc(l)} <small>${esc(p)}${managed.some((m) => m.pkg === p) ? ` · ${ic("pkg")}` : ""}</small></label>`).join("") || `<label class="muted">${t("d.f.noapps")}</label>`}</div>${everyone.length ? `<p class="hint">${t("a.also", { list: everyone.map((a) => esc(a.label)).join(", ") })}</p>` : ""}</div>
       <div class="field"><label for="dMsg">${t("d.f.msg")} <span class="muted">${t("common.optional")}</span></label><input id="dMsg" value="${esc(d.messageOverride ?? "")}" placeholder="${esc(t("d.f.msg.ph"))}" ${ro()}></div>
       <div class="field"><label for="dNotes">${t("d.f.notes")}</label><textarea id="dNotes" rows="2" ${ro()}>${esc(d.notes)}</textarea></div>
       ${d.lastError ? `<h3 style="margin:24px 0 8px">${t("d.error")}</h3><pre class="box">${esc(d.lastError)}</pre>` : ""}
@@ -506,6 +507,22 @@ function lostDialog(d, send) {
   $("#lGo").onclick = (e) => busy(e.currentTarget, async () => { await send("lost", { message: $("#lMsg").value, phone: $("#lPhone").value }); dlg.close(); });
 }
 
+// Apps the Galaxy phones ship with, so they can be allowed before any phone has reported its list.
+const SYSTEM_APPS = [
+  ["com.samsung.android.dialer", "Phone"], ["com.samsung.android.messaging", "Messages"], ["com.samsung.android.app.contacts", "Contacts"],
+  ["com.sec.android.app.camera", "Camera"], ["com.sec.android.gallery3d", "Gallery"], ["com.android.chrome", "Chrome"],
+  ["com.sec.android.app.sbrowser", "Samsung Internet"], ["com.google.android.apps.maps", "Google Maps"], ["com.waze", "Waze"],
+  ["com.whatsapp", "WhatsApp"], ["com.google.android.gm", "Gmail"], ["com.google.android.youtube", "YouTube"],
+  ["com.sec.android.app.clockpackage", "Clock"], ["com.sec.android.app.popupcalculator", "Calculator"], ["com.samsung.android.calendar", "Calendar"],
+  ["com.sec.android.app.myfiles", "My Files"], ["com.google.android.googlequicksearchbox", "Google"], ["com.android.vending", "Play Store"],
+  ["com.android.settings", "Settings"],
+];
+function appCatalogue(apps) {
+  const m = new Map(apps.map((a) => [a.pkg, { ...a }]));
+  for (const [pkg, label] of SYSTEM_APPS) { const cur = m.get(pkg); if (cur) cur.system = true; else m.set(pkg, { pkg, label, devices: 0, system: true, allowed: false }); }
+  return [...m.values()].sort((a, b) => (b.allowed - a.allowed) || (b.devices > 0) - (a.devices > 0) || a.label.localeCompare(b.label));
+}
+
 // ---------- Groups ----------
 pages.groups = {
   title: "g.title", sub: "g.sub",
@@ -527,12 +544,13 @@ pages.groups = {
 };
 function groupDialog(g, apps) {
   const sel = (g?.allowedApps ?? []).map((a) => a.pkg);
-  const known = new Map(apps.map((a) => [a.pkg, a.label])); (g?.allowedApps ?? []).forEach((a) => known.set(a.pkg, a.label));
+  const everyone = apps.filter((a) => a.allowed);
+  const known = new Map(apps.filter((a) => !a.allowed).map((a) => [a.pkg, a.label])); (g?.allowedApps ?? []).forEach((a) => { if (!everyone.some((x) => x.pkg === a.pkg)) known.set(a.pkg, a.label); });
   openDlg(`<div class="hd"><div class="grow"><h2>${g ? t("g.edit") : t("g.new")}</h2></div><button class="btn quiet icon" data-close aria-label="${esc(t("common.close"))}">${ic("x")}</button></div>
     <div class="bd">
       <div class="field"><label for="gName">${t("g.name")}</label><input id="gName" value="${esc(g?.name ?? "")}" placeholder="${esc(t("g.name.ph"))}"></div>
       <div class="field"><label>${t("g.apps")}</label><div class="apps" id="gApps">${[...known].map(([p, l]) => `<label><input type="checkbox" value="${esc(p)}" data-label="${esc(l)}" ${sel.includes(p) ? "checked" : ""}> ${esc(l)} <small>${esc(p)}</small></label>`).join("") || `<label class="muted">${t("g.noapps.yet")}</label>`}</div>
-        <p class="hint">${t("g.apps.hint")}</p></div>
+        <p class="hint">${t("g.apps.hint")}${everyone.length ? ` ${t("a.also", { list: everyone.map((a) => esc(a.label)).join(", ") })}` : ""}</p></div>
       <div class="field"><label for="gPkg">${t("g.pkg")}</label><div class="row"><input id="gPkg" placeholder="com.company.app" style="flex:1"><button class="btn ghost" id="gAdd">${t("g.pkg.add")}</button></div></div>
       <div class="field"><label for="gMsg">${t("g.msg")}</label><input id="gMsg" value="${esc(g?.message ?? "")}"></div>
     </div>
@@ -599,10 +617,19 @@ pages.provision = {
 pages.releases = {
   title: "r.title", sub: "r.sub",
   skeleton: () => skTable(4),
-  load: () => Promise.all([get("/api/releases"), get("/api/overview"), get("/api/groups"), get("/api/managed-apps")]),
-  render([rs, o, gs, managed]) {
+  load: () => Promise.all([get("/api/releases"), get("/api/overview"), get("/api/groups"), get("/api/managed-apps"), get("/api/apps")]),
+  render([rs, o, gs, managed, apps]) {
     const latest = new Map(); for (const m of managed) if (!latest.has(m.pkg)) latest.set(m.pkg, m);
+    const cat = appCatalogue(apps);
     return `
+    <div class="card section" id="appsCat"><div class="hd"><div><h3>${t("a.h")}</h3><p>${t("a.p")}</p></div><input id="aSearch" placeholder="${esc(t("a.search"))}" style="max-width:220px"></div>
+      <div class="tablewrap"><table><thead><tr><th style="width:120px">${t("a.allowed")}</th><th>${t("m.label")}</th><th>${t("m.pkg")}</th><th>${t("a.on")}</th></tr></thead><tbody id="aRows">
+        ${cat.map((a) => `<tr data-q="${esc((a.label + " " + a.pkg).toLowerCase())}"><td><label class="check" style="margin:0"><input type="checkbox" class="aAllow" value="${esc(a.pkg)}" data-label="${esc(a.label)}" ${a.allowed ? "checked" : ""} ${ro()}><span></span></label></td>
+          <td><b>${esc(a.label)}</b>${a.system ? ` <span class="pill plain">${t("a.system")}</span>` : ""}${latest.has(a.pkg) ? ` <span class="pill info plain">${t("a.managed")}</span>` : ""}</td><td><code>${esc(a.pkg)}</code></td>
+          <td class="muted">${a.devices ? t("common.phones", { n: a.devices }) : t("a.notyet")}</td></tr>`).join("")}
+      </tbody></table></div>
+      ${canWrite() ? `<div class="pad row" style="gap:8px;flex-wrap:wrap;border-top:1px solid var(--border)"><input id="aPkg" placeholder="com.company.app" style="flex:2;min-width:180px"><input id="aLabel" placeholder="${esc(t("m.label"))}" style="flex:1;min-width:140px"><button class="btn ghost" id="aAdd">${t("g.pkg.add")}</button><span class="hint" style="flex-basis:100%">${t("a.hint")}</span></div>` : ""}
+    </div>
     ${canWrite() ? `<div class="grid g2"><div class="card pad"><h3>${t("r.kiosk")}</h3><p class="hint" style="margin-top:4px">${t("r.kiosk.p")}</p>
         <div class="field"><label for="apk">${t("r.file")}</label><input type="file" id="apk" accept=".apk" class="w100"></div>
         <div class="row"><div class="field" style="flex:1;margin-top:14px"><label for="vName">${t("r.vname")}</label><input id="vName" placeholder="1.4.0"></div><div class="field" style="flex:1;margin-top:14px"><label for="vCode">${t("r.vcode")}</label><input id="vCode" type="number" placeholder="13"></div></div>
@@ -630,6 +657,18 @@ pages.releases = {
       </tbody></table></div></div>`;
   },
   bind() {
+    const saveAllowed = async () => {
+      const list = $$("#aRows .aAllow:checked").map((i) => ({ pkg: i.value, label: i.dataset.label }));
+      await api("PUT", "/api/settings", { allowedApps: list }); toast(t("a.saved"));
+    };
+    $$("#aRows .aAllow").forEach((i) => i.addEventListener("change", (e) => saveAllowed().catch((err) => { e.target.checked = !e.target.checked; fail(err); })));
+    $("#aSearch")?.addEventListener("input", (e) => { const q = e.target.value.trim().toLowerCase(); $$("#aRows tr").forEach((r) => r.classList.toggle("hidden", !!q && !r.dataset.q.includes(q))); });
+    $("#aAdd")?.addEventListener("click", (e) => busy(e.currentTarget, async () => {
+      const p = $("#aPkg").value.trim(); if (!/^[A-Za-z0-9_.]+$/.test(p)) return toast(t("g.pkg.bad"), "err");
+      const list = $$("#aRows .aAllow:checked").map((i) => ({ pkg: i.value, label: i.dataset.label })).filter((a) => a.pkg !== p);
+      list.push({ pkg: p, label: $("#aLabel").value.trim() || p });
+      await api("PUT", "/api/settings", { allowedApps: list }); toast(t("a.saved")); refresh();
+    }));
     $("#upload")?.addEventListener("click", (e) => busy(e.currentTarget, async () => {
       const f = $("#apk").files[0]; if (!f) return toast(t("r.choose"), "err");
       const q = new URLSearchParams({ versionName: $("#vName").value, versionCode: $("#vCode").value, certSha256: $("#vCert").value });
