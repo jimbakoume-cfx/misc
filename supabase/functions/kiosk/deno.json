@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "qrcode": "npm:qrcode@1.5.4",
+    "postgres": "npm:postgres@3.4.7"
+  }
+}

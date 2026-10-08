@@ -3,8 +3,9 @@
 ## Dashboard
 - Sign-in: password (12+ characters, scrypt-hashed) plus optional **two-factor codes** (authenticator app, with one-time
   recovery codes). Settings → *Require two-factor for all users* enforces it.
-- Sessions: HttpOnly, SameSite=Strict, Secure cookies, 12 h. Changing your password or two-factor settings signs out all other
-  sessions. Changes made from the browser must carry a custom header (CSRF protection).
+- Sessions: HttpOnly, SameSite=Strict, Secure cookies, 12 h, when the console is served next to the API (Netlify proxy); a
+  console hosted elsewhere (GitHub Pages) keeps a bearer token in the browser instead and sends no cookies. Changing your
+  password or two-factor settings signs out all other sessions. Cookie-based changes must carry a custom header (CSRF).
 - Brute-force protection: 8 failed sign-ins lock that address/account for 5 minutes. Failures are logged with the address.
 - Roles: *Admin* and read-only *Viewer*. Every change is written to the Activity log.
 - Browser hardening: strict Content-Security-Policy (no inline scripts), HSTS, no framing, no referrer, locked-down permissions.
@@ -18,6 +19,11 @@
   (120,000 rounds) and locks out after 5 wrong tries.
 - Removing a phone from the dashboard first unlocks it (*Release & remove*); *Delete now* is for lost phones.
 - Transport: HTTPS only (the app refuses http://). Each phone has its own secret token, stored hashed on the server.
+- Check-ins go through Supabase PostgREST with the public key plus the phone's token; every table has row-level security
+  with no policies, so the public key can only call `kiosk_heartbeat` and `kiosk_report`, which verify the token themselves.
+- Lost mode, ring, locate and wipe are dashboard commands written to the Activity log; wipe asks the admin to type the
+  phone's name. Location is only reported when Settings → Phones → "Report last known location" is on, and the phone's
+  Settings screen says so to the driver.
 - Updates: APKs must be signed with the same key (Android enforces this) and match the SHA-256 the server announces.
 
 ## Instant-command channel
@@ -27,9 +33,9 @@
 ## What you must protect
 - The **signing keystore** (`kiosk-release.keystore` + its password): whoever holds it can ship an app that phones will accept.
 - The **dashboard admin accounts** (turn on two-factor) and the **enrolment QR** until its expiry.
-- Netlify account access (it can read the environment variables, including `SESSION_SECRET`).
+- Supabase account access (database, storage and the function's secrets) and the static-hosting account (Netlify/GitHub).
 
 ## Known limits
 - Recovering a phone that is offline and unusable needs a physical factory reset from the recovery menu (needs the phone in hand).
-- `SESSION_SECRET` is stored as a normal (not "secret-flagged") Netlify variable because the connector used for setup could not
-  set secret variables. Re-save it as a secret in the Netlify UI if you want it hidden from team members.
+- The session secret and the cron key live in the `settings` table (generated on first start); anyone with database access
+  can read them, which is also true of every other row.

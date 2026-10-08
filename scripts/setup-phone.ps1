@@ -1,12 +1,12 @@
 <#
  Sets up one or more phones over USB (Windows). No QR code, no 6 taps.
  Usage (PowerShell):   .\setup-phone.ps1 -Code D9MGX-8VBHW
- Optional:             -Server https://confiance-kiosk.netlify.app   -Adb C:\path\to\platform-tools\adb.exe
+ Optional:             -Server https://qzkoowbcngcdnhqystwz.supabase.co/functions/v1/kiosk   -Adb C:\path\to\platform-tools\adb.exe
  Phones must be freshly reset, set up WITHOUT any Google/Samsung account, with USB debugging on. See docs/USB_SETUP.md
 #>
 param(
   [Parameter(Mandatory = $true)][string]$Code,
-  [string]$Server = "https://confiance-kiosk.netlify.app",
+  [string]$Server = "https://qzkoowbcngcdnhqystwz.supabase.co/functions/v1/kiosk",
   [string]$Adb = ""
 )
 $ErrorActionPreference = "Continue"

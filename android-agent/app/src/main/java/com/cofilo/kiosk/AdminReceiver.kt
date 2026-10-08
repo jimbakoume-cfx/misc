@@ -35,7 +35,7 @@ class PostSetupJobService : JobService() {
 
 /** Reads the server URL / enrollment token that the QR code carries, and the after-setup hand-off. */
 object Provision {
-    const val DEFAULT_SERVER = "https://confiance-kiosk.netlify.app"
+    const val DEFAULT_SERVER = "https://qzkoowbcngcdnhqystwz.supabase.co/functions/v1/kiosk"
 
     /** The QR code's admin extras. Android delivers them as a PersistableBundle (not a Bundle). */
     @Suppress("DEPRECATION")

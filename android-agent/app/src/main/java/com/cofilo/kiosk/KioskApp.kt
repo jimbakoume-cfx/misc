@@ -11,6 +11,7 @@ import java.util.Locale
 class KioskApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        runCatching { Ui.lang = Prefs(this).lang }   // in-app language override, before any text is rendered
         if (!Prefs(this).enrolled) Beacon.send(this, "app-started", "version=${runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrDefault("?")}")
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->

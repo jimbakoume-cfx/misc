@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Sets up one or more phones over USB (Mac/Linux). No QR code, no 6 taps.
-# Usage: ./setup-phone.sh D9MGX-8VBHW [https://confiance-kiosk.netlify.app]
+# Usage: ./setup-phone.sh D9MGX-8VBHW [https://qzkoowbcngcdnhqystwz.supabase.co/functions/v1/kiosk]
 # Phones must be freshly reset, set up WITHOUT any Google/Samsung account, with USB debugging on. See docs/USB_SETUP.md
 set -u
 CODE="${1:?Usage: ./setup-phone.sh <enrollment code> [server]}"
-SERVER="${2:-https://confiance-kiosk.netlify.app}"
+SERVER="${2:-https://qzkoowbcngcdnhqystwz.supabase.co/functions/v1/kiosk}"
 PKG="com.cofilo.kiosk"
 ADB="${ADB:-$(command -v adb || true)}"
 [ -x "${ADB:-}" ] || { for c in "$(dirname "$0")/platform-tools/adb" "$HOME/platform-tools/adb"; do [ -x "$c" ] && ADB="$c" && break; done; }
