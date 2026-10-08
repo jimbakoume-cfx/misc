@@ -1,0 +1,8 @@
+Package:            com.cofilo.kiosk
+App name:           Confiance Kiosk
+Admin component:    com.cofilo.kiosk/.AdminReceiver
+Version:            1.4.2 (code 15)
+Cert SHA-256 (QR):  XeoIrAWAbYI7udlW8sbtVACe0PkY2EH11nXoQlVJdCU
+Signed with:        kiosk-release.keystore (alias kiosk), created 2026-10-08; NOT the key used for 1.3.4
+Changes:            self-update works on Android 12+ (no user action needed), update offered by the policy and retried,
+                    "Update now" in Settings, install errors reported to the dashboard, model/OS in every check-in

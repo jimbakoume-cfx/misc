@@ -57,6 +57,7 @@ foreach ($s in $ready) {
   $out = Run $s @("shell", "dpm", "set-device-owner", "$Package/.AdminReceiver")
   if ($out -notmatch "Success") {
     Say "Could not make the app the device manager: $out" Red
+    if ($out -match "already.*owner|device owner.*already") { Say "This phone is already managed: the app was updated to the latest version, nothing else to do." Green; continue }
     if ($out -match "account") { Say "The phone has an account on it. Remove it (Settings > Accounts) or factory-reset and skip every account step in the setup." Yellow }
     elseif ($out -match "already|provision|user") { Say "The phone is already set up in a way that blocks this. Factory-reset it, skip every account step, then run this again." Yellow }
     continue

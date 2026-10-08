@@ -80,7 +80,8 @@ Response `200`:
     "driverWifi": true, "dispatchPhone": "+237 6 00 00 00 00", "reportLocation": false,
     "installApps": [ { "pkg": "com.confiance.driver", "versionCode": 121, "url": "https://…/apk/<sha>.apk", "sha256": "…" } ],
     "lostMode": { "on": false, "message": "", "phone": "" },
-    "dataBudgetMb": 2048
+    "dataBudgetMb": 2048,
+    "update": { "url": "https://…/apk/<sha>.apk", "sha256": "…", "versionCode": 15, "versionName": "1.4.2" }
   },
   "commands": [ { "id": "41", "type": "lock", "payload": {} } ]
 }
@@ -95,6 +96,8 @@ Policy rules for the agent:
   Supabase). `rest`: store when present; clear when absent.
 - `driverWifi`: when true the Settings sheet offers "Wi-Fi networks" to the driver without a PIN.
 - `dispatchPhone`: when non-empty, show a "Call dispatch" action that dials it (dialer temporarily allowed in lock task).
+- `update` (1.4.2+): present when a newer kiosk release exists and auto-update is on; the agent installs it
+  itself (retrying every 10 minutes while it fails) and the app's Settings screen offers "Update now".
 - `installApps`: for each entry whose package is missing or has an installed `versionCode` lower than the given
   one, download `url`, verify `sha256`, and install silently (PackageInstaller, device owner). At most one attempt
   per package per hour; report failures in the next heartbeat as `status.lastError`.

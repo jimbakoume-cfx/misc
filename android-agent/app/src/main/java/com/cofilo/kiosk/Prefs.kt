@@ -122,6 +122,14 @@ class Prefs(context: Context) {
         get() = str("lastCrash")
         set(v) = put("lastCrash", v)
 
+    /** `policy.update` as sent by the server (url, sha256, versionCode, versionName), or "" when up to date. */
+    var updateInfo: String
+        get() = str("updateInfo")
+        set(v) = put("updateInfo", v)
+    var lastUpdateAttempt: Long
+        get() = sp.getLong("lastUpdateAttempt", 0L)
+        set(v) = put("lastUpdateAttempt", v)
+
     var lastCheckIn: Long
         get() = sp.getLong("lastCheckIn", 0L)
         set(v) = put("lastCheckIn", v)

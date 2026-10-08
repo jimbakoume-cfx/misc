@@ -517,6 +517,20 @@ class MainActivity : Activity() {
             if (p.vehicle.isNotEmpty()) col.addView(infoRow(tr("Vehicle", "Véhicule"), p.vehicle))
             col.addView(infoRow(tr("Management", "Gestion"),
                 if (Policy.isOwner(this)) tr("Managed", "Géré") else tr("Not managed", "Non géré")))
+            val offered = p.updateInfo.takeIf { it.isNotEmpty() }?.let { runCatching { org.json.JSONObject(it) }.getOrNull() }
+            val mine = runCatching { packageManager.getPackageInfo(packageName, 0).longVersionCode }.getOrDefault(0L)
+            if (offered != null && offered.optLong("versionCode", 0L) > mine) {
+                actionRow(col, tr("Update to ${offered.optString("versionName")} now", "Mettre à jour vers ${offered.optString("versionName")}"), primary = true) {
+                    dlg.dismiss(); AgentService.updateNow(this)
+                    Toast.makeText(this, tr("Updating… the app restarts by itself.", "Mise à jour… l'application redémarre toute seule."), Toast.LENGTH_LONG).show()
+                }
+            } else if (p.enrolled) {
+                actionRow(col, tr("Check for updates", "Rechercher une mise à jour")) {
+                    dlg.dismiss(); AgentService.updateNow(this)
+                    Toast.makeText(this, tr("Checking with the dashboard…", "Vérification auprès du tableau de bord…"), Toast.LENGTH_SHORT).show()
+                }
+            }
+            if (p.lastError.startsWith("install ")) col.addView(Ui.text(this, p.lastError, 12f, Ui.muted).apply { setPadding(0, dp(4), 0, dp(4)) })
             col.addView(infoRow(tr("Last check-in", "Dernière connexion"),
                 if (p.lastCheckIn > 0) DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(p.lastCheckIn)) else tr("never", "jamais")))
             col.addView(infoRow(tr("Network", "Réseau"), networkLabel()))

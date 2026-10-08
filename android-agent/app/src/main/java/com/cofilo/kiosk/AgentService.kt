@@ -118,6 +118,25 @@ class AgentService : Service() {
             enroll(prefs)
         }
         if (prefs.enrolled) heartbeat(prefs)
+        if (prefs.enrolled) maybeSelfUpdate(prefs)
+    }
+
+    /**
+     * Installs the release the policy offers when it is newer than this build. Retried every check-in after a
+     * [UPDATE_RETRY_MS] pause (an install the phone refused shows up as `lastError`); "Update now" resets the pause.
+     */
+    private fun maybeSelfUpdate(prefs: Prefs) {
+        val info = prefs.updateInfo.takeIf { it.isNotEmpty() }?.let { runCatching { JSONObject(it) }.getOrNull() } ?: return
+        val mine = packageManager.getPackageInfo(packageName, 0).longVersionCode
+        if (info.optLong("versionCode", 0L) <= mine) return
+        if (SystemClock.elapsedRealtime() - prefs.lastUpdateAttempt < UPDATE_RETRY_MS && prefs.lastUpdateAttempt > 0) return
+        prefs.lastUpdateAttempt = SystemClock.elapsedRealtime()
+        Log.i(TAG, "updating to ${info.optString("versionName")} (${info.optLong("versionCode")})")
+        try {
+            selfUpdate(info.getString("url"), info.getString("sha256"))
+        } catch (e: Throwable) {
+            tickError = "update: ${e.message ?: e.javaClass.simpleName}".take(200)
+        }
     }
 
     private fun enroll(prefs: Prefs) {
@@ -234,6 +253,7 @@ class AgentService : Service() {
         prefs.dispatchPhone = p.str("dispatchPhone").trim()
         prefs.reportLocation = p.optBoolean("reportLocation", false)
         prefs.dataBudgetMb = p.optInt("dataBudgetMb", 0)
+        prefs.updateInfo = p.optJSONObject("update")?.toString() ?: ""
 
         // Addresses: `rest` is stored when present and cleared when absent; `serverUrl` migrates phones from the
         // old Netlify address to the Supabase function.
@@ -465,6 +485,7 @@ class AgentService : Service() {
         private const val CHANNEL = "agent"
         private const val RETRY_MS = 15_000L
         private const val INSTALL_RETRY_MS = 60 * 60_000L
+        private const val UPDATE_RETRY_MS = 10 * 60_000L
         @Volatile private var instance: AgentService? = null
 
         /** elapsedRealtime until which the alarm sound plays (0 = silent). The kiosk screen keeps the screen on meanwhile. */
@@ -475,6 +496,12 @@ class AgentService : Service() {
         fun retryNow(ctx: Context) {
             start(ctx)
             instance?.wakeSignal?.release()
+        }
+
+        /** "Update now" from Settings: forgets the retry pause and checks in at once. */
+        fun updateNow(ctx: Context) {
+            Prefs(ctx).lastUpdateAttempt = 0L
+            retryNow(ctx)
         }
 
         /** Silences a `ring` / lost-mode alarm (admin "leave lost mode"). */

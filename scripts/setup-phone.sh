@@ -37,6 +37,7 @@ for S in $DEVICES; do
   echo "$OUT" | grep -q Success || { echo "Install failed: $OUT"; echo "If the phone asked about Play Protect or install via USB, accept it and run again."; continue; }
   OUT=$("$ADB" -s "$S" shell dpm set-device-owner "$PKG/.AdminReceiver" 2>&1)
   if ! echo "$OUT" | grep -q Success; then
+    if echo "$OUT" | grep -qiE "already.*owner|device owner.*already"; then echo "This phone is already managed: the app was updated to the latest version, nothing else to do."; continue; fi
     echo "Could not make the app the device manager: $OUT"
     echo "$OUT" | grep -qi account && echo "The phone has an account on it. Remove it (Settings > Accounts) or factory-reset and skip every account step."
     echo "$OUT" | grep -qiE "already|provision|user" && echo "The phone is already set up in a way that blocks this. Factory-reset it, skip every account step, then run again."
