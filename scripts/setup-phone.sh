@@ -42,6 +42,10 @@ for S in $DEVICES; do
     echo "$OUT" | grep -qiE "already|provision|user" && echo "The phone is already set up in a way that blocks this. Factory-reset it, skip every account step, then run again."
     continue
   fi
+  # Portrait only: let the app switch auto-rotate off for the whole phone, and switch it off now.
+  "$ADB" -s "$S" shell appops set "$PKG" WRITE_SETTINGS allow >/dev/null 2>&1
+  "$ADB" -s "$S" shell settings put system accelerometer_rotation 0 >/dev/null 2>&1
+  "$ADB" -s "$S" shell settings put system user_rotation 0 >/dev/null 2>&1
   OUT=$("$ADB" -s "$S" shell am broadcast -n "$PKG/.UsbSetupReceiver" --es server_url "$SERVER" --es enroll_token "$CODE" 2>&1)
   echo "$OUT" | grep -q 'data="ok"' || { echo "The phone did not accept the setup code: $OUT"; continue; }
   "$ADB" -s "$S" shell am start -n "$PKG/.MainActivity" >/dev/null 2>&1

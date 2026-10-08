@@ -96,6 +96,15 @@ object Policy {
                 dpm.setPermissionGrantState(admin, ctx.packageName, perm, DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED)
             }
         }
+        // Portrait only, for the whole phone (the driver app included): auto-rotate off and rotation fixed to 0.
+        // Writing these needs WRITE_SETTINGS, which the USB setup grants with adb; without it this app alone stays
+        // portrait (manifest) and the system setting is left as it is.
+        runCatching {
+            if (Settings.System.canWrite(ctx)) {
+                Settings.System.putInt(ctx.contentResolver, Settings.System.ACCELEROMETER_ROTATION, 0)
+                Settings.System.putInt(ctx.contentResolver, Settings.System.USER_ROTATION, 0)
+            }
+        }
         runCatching {
             dpm.setGlobalSetting(admin, Settings.Global.STAY_ON_WHILE_PLUGGED_IN, "7")
         }

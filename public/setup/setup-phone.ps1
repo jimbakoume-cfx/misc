@@ -61,6 +61,10 @@ foreach ($s in $ready) {
     elseif ($out -match "already|provision|user") { Say "The phone is already set up in a way that blocks this. Factory-reset it, skip every account step, then run this again." Yellow }
     continue
   }
+  # Portrait only: let the app switch auto-rotate off for the whole phone, and switch it off now.
+  Run $s @("shell", "appops", "set", $Package, "WRITE_SETTINGS", "allow") | Out-Null
+  Run $s @("shell", "settings", "put", "system", "accelerometer_rotation", "0") | Out-Null
+  Run $s @("shell", "settings", "put", "system", "user_rotation", "0") | Out-Null
   $out = Run $s @("shell", "am", "broadcast", "-n", "$Package/.UsbSetupReceiver", "--es", "server_url", $Server, "--es", "enroll_token", $Code)
   if ($out -notmatch "data=`"ok`"") { Say "The phone did not accept the setup code: $out" Red; continue }
   Run $s @("shell", "am", "start", "-n", "$Package/.MainActivity") | Out-Null
