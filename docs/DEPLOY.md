@@ -19,8 +19,9 @@ are hosted on a static host and talk to the function. Two free options are wired
    agent 1.3.x (which only know the Netlify address) keep working. Deploy with `netlify deploy --prod --dir=public`
    or connect the repository.
 2. **GitHub Pages.** `.github/workflows/pages.yml` publishes `public/` with `<meta name="kiosk-api">` pointing at the
-   function (the console then signs in with a bearer token). Enable it once: repository **Settings → Pages → Source:
-   GitHub Actions**. Any other static host works the same way: copy `public/` and set that meta tag.
+   function (the console then signs in with a bearer token). Enable it once (repository **Settings → Pages → Source:
+   GitHub Actions**), then run the workflow from the Actions tab; it is manual until Pages is enabled. Any other static
+   host works the same way: copy `public/` and set that meta tag.
 
 ## First deployment (already done for the project above)
 ```bash

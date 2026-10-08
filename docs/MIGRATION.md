@@ -32,7 +32,7 @@ what changed and the few steps that cannot be done from the repository.
 4. **Deploy the dashboard.** Netlify: connect the repository (branch `main`) or `netlify deploy --prod --dir=public` with
    the new `netlify.toml`; the site now serves `public/` and proxies `/api`, `/apk`, `/healthz` to Supabase. Remove the
    old Netlify environment variables (`DATABASE_URL`, `SESSION_SECRET`, …): nothing reads them any more.
-   GitHub Pages: Settings → Pages → Source "GitHub Actions"; `.github/workflows/pages.yml` publishes on every push.
+   GitHub Pages: Settings → Pages → Source "GitHub Actions", then run `.github/workflows/pages.yml` from the Actions tab.
 5. **Alert e-mails.** In Supabase → Edge Functions → Secrets add `RESEND_API_KEY` (and `ALERT_FROM`, a verified sender).
    Without it, alerts show in the dashboard only.
 6. **Build agent 1.4.0.** `android-agent/` already contains the new protocol (data usage, SIM, ring, locate, lost mode,
