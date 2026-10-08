@@ -2,7 +2,7 @@ import QRCode from "qrcode";
 import { Buffer } from "node:buffer";
 import { createHash, pbkdf2Sync, randomBytes } from "node:crypto";
 import type { Assets, BlobStore, Db } from "./db.ts";
-import { toPg } from "./db.ts";
+import { staticType, toPg } from "./db.ts";
 import {
   hashPassword, newRecoveryCode, newTotpSecret, normRecovery, randomToken, sha256, signSession, verifyPassword,
   verifySession, verifyTotp, type Session,
@@ -910,6 +910,16 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
     return { ok: true };
   });
 
+  // Dashboard files are published here (scripts/publish-dashboard.mjs) when they are not bundled with the code.
+  add("PUT", "/api/static", "write", async (c) => {
+    if (!blobs.setStatic) throw new HttpError(409, "This deployment serves its dashboard from the bundle");
+    const p = "/" + (c.query.get("path") ?? "").replace(/^\/+/, "");
+    if (!/^\/[A-Za-z0-9_./-]+$/.test(p) || p.includes("..")) throw new HttpError(400, "Bad path");
+    const body = await c.req.arrayBuffer();
+    await blobs.setStatic(p, body, staticType(p));
+    return { ok: true, path: p, size: body.byteLength };
+  });
+
   add("GET", "/api/audit", "read", async (c) => {
     const q = (c.query.get("q") ?? "").trim().toLowerCase();
     const limit = Math.min(Math.max(num(c.query.get("limit"), 200), 1), 1000);
@@ -920,8 +930,8 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
   });
 
   // ---------- static dashboard ----------
-  function serveAsset(path: string): Response | null {
-    const a = deps.assets?.get(path === "/" ? "/index.html" : path);
+  async function serveAsset(path: string): Promise<Response | null> {
+    const a = await deps.assets?.get(path === "/" ? "/index.html" : path);
     if (!a) return null;
     const body = typeof a.body === "string" ? a.body : new Uint8Array(a.body);
     return new Response(body as BodyInit, { headers: {
@@ -963,7 +973,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
       }
       if (!matched) {
         if (!pathMatched && (req.method === "GET" || req.method === "HEAD")) {
-          const asset = serveAsset(path || "/");
+          const asset = await serveAsset(path || "/");
           if (asset) return asset;
         }
         return reply({ error: pathMatched ? "Method not allowed" : "Not found" }, pathMatched ? 405 : 404);
@@ -991,7 +1001,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
         const k = req.headers.get("x-cron-key") ?? url.searchParams.get("key") ?? "";
         if (!k || k !== (await setting("cron_key"))) throw new HttpError(401, "Bad cron key");
       }
-      const rawBody = req.method === "PUT" && (path === "/api/releases" || path === "/api/managed-apps");
+      const rawBody = req.method === "PUT" && (path === "/api/releases" || path === "/api/managed-apps" || path === "/api/static");
       if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method) && !rawBody) {
         const text = await req.text();
         if (text) {

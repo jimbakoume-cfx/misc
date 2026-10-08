@@ -3,4 +3,3 @@ node_modules/
 .env
 *.local
 releases/enrol-qr*.png
-supabase/functions/kiosk/assets.ts

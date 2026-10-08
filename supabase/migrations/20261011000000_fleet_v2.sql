@@ -223,7 +223,7 @@ BEGIN
   FOR a IN SELECT * FROM jsonb_array_elements(CASE WHEN jsonb_typeof(acks) = 'array' THEN acks ELSE '[]'::jsonb END) LOOP
     UPDATE commands cm SET status = CASE WHEN a->>'status' = 'done' THEN 'done' ELSE 'failed' END,
            error = left(COALESCE(a->>'error', ''), 300), done_at = t
-     WHERE cm.id = NULLIF(regexp_replace(COALESCE(a->>'id', ''), '\D', '', 'g'), '')::int AND cm.device_id = d.id AND cm.status IN ('sent', 'pending');
+     WHERE cm.id = NULLIF(regexp_replace(COALESCE(a->>'id', ''), '[^0-9]', '', 'g'), '')::int AND cm.device_id = d.id AND cm.status IN ('sent', 'pending');
   END LOOP;
 
   IF COALESCE(st->>'simSerial', '') <> '' AND d.sim_serial <> '' AND d.sim_serial <> (st->>'simSerial') THEN
@@ -235,7 +235,7 @@ BEGIN
          imei = COALESCE(NULLIF(st->>'imei', ''), dv.imei),
          sim_serial = COALESCE(NULLIF(st->>'simSerial', ''), dv.sim_serial),
          security_patch = COALESCE(NULLIF(st->>'securityPatch', ''), dv.security_patch),
-         last_location = CASE WHEN jsonb_typeof(kiosk_heartbeat.location) = 'object' AND kiosk_heartbeat.location ? 'lat' THEN kiosk_heartbeat.location::text ELSE dv.last_location END
+         last_location = CASE WHEN jsonb_typeof(kiosk_heartbeat.location) = 'object' AND jsonb_exists(kiosk_heartbeat.location, 'lat') THEN kiosk_heartbeat.location::text ELSE dv.last_location END
    WHERE dv.id = d.id;
 
   IF jsonb_typeof(usage) = 'object' THEN
@@ -246,7 +246,7 @@ BEGIN
     ON CONFLICT (device_id, day) DO UPDATE SET
       mobile_bytes = usage_daily.mobile_bytes + EXCLUDED.mobile_bytes,
       wifi_bytes = usage_daily.wifi_bytes + EXCLUDED.wifi_bytes,
-      app_usage = CASE WHEN kiosk_heartbeat.usage ? 'appUsage' THEN EXCLUDED.app_usage ELSE usage_daily.app_usage END;
+      app_usage = CASE WHEN jsonb_exists(kiosk_heartbeat.usage, 'appUsage') THEN EXCLUDED.app_usage ELSE usage_daily.app_usage END;
     PERFORM kiosk_check_budget(d.id, v_day);
   END IF;
 
@@ -267,7 +267,7 @@ BEGIN
 
   -- auto-update to the newest kiosk release
   SELECT * INTO rel FROM releases ORDER BY version_code DESC, id DESC LIMIT 1;
-  code := COALESCE(NULLIF(regexp_replace(COALESCE(st->>'agentVersionCode', ''), '\D', '', 'g'), '')::int, 0);
+  code := COALESCE(NULLIF(regexp_replace(COALESCE(st->>'agentVersionCode', ''), '[^0-9]', '', 'g'), '')::int, 0);
   IF rel.id IS NOT NULL AND kiosk_setting('auto_update', '1') = '1' AND owner AND code > 0 AND code < rel.version_code
      AND NOT EXISTS (SELECT 1 FROM commands cm WHERE cm.device_id = d.id AND cm.type = 'update' AND cm.created_at > t - 1800000) THEN
     INSERT INTO commands(device_id, type, payload, created_at)
@@ -330,7 +330,7 @@ END $$;
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'storage') THEN
-    INSERT INTO storage.buckets (id, name, public) VALUES ('apk', 'apk', true) ON CONFLICT (id) DO UPDATE SET public = true;
+    INSERT INTO storage.buckets (id, name, public) VALUES ('apk', 'apk', true), ('web', 'web', true) ON CONFLICT (id) DO UPDATE SET public = true;
   END IF;
 END $$;
 
