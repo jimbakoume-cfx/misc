@@ -416,7 +416,9 @@ function drawDeviceMap(d) {
   if (!el || !window.L || !d.location) return;
   const lat = Number(el.dataset.lat), lon = Number(el.dataset.lon), acc = Number(el.dataset.acc) || 0;
   const map = L.map(el, { zoomControl: true, attributionControl: true, scrollWheelZoom: false });
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>' }).addTo(map);
+  // OpenStreetMap's tile policy requires a Referer; the dashboard's own Referrer-Policy is "no-referrer", so the tile
+  // images carry their own policy (origin only).
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, referrerPolicy: "strict-origin-when-cross-origin", attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>' }).addTo(map);
   const label = esc(d.driverName || d.name);
   if (acc > 0) L.circle([lat, lon], { radius: acc, color: "#175cd3", weight: 1, fillColor: "#175cd3", fillOpacity: 0.12 }).addTo(map);
   L.marker([lat, lon], { icon: L.divIcon({ className: "locdot-wrap", html: `<span class="locdot"><i></i></span>`, iconSize: [22, 22], iconAnchor: [11, 11] }), title: label }).addTo(map)
