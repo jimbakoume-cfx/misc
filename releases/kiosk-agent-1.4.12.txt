@@ -1,0 +1,8 @@
+Package:            com.cofilo.kiosk
+App name:           Confiance Kiosk
+Admin component:    com.cofilo.kiosk/.AdminReceiver
+Version:            1.4.12 (code 25)
+Cert SHA-256 (QR):  XeoIrAWAbYI7udlW8sbtVACe0PkY2EH11nXoQlVJdCU
+Signed with:        kiosk-release.keystore (alias kiosk), created 2026-10-08; NOT the key used for 1.3.4
+SHA-256 (APK):      999a5a1f3a906f963c6b9f5fc6d1f05350dc304b9c84ba51cd9ed59a6c3d848b
+Changes:            audit fixes: device token sealed with an Android Keystore key; Wi-Fi shortcut opens the panel only and the kiosk re-locks after 90 s; language changes blocked; USB setup accepts only the fleet's servers; "What this phone reports" notice in Settings; IMEI no longer in every check-in; no restart during a call

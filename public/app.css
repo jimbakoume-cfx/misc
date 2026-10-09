@@ -243,3 +243,5 @@ tr.lostrow td:nth-child(2) b::before, .devcard.lostrow .dev b::before { content:
 @keyframes locpulse { 0% { transform: scale(.6); opacity: 1; } 100% { transform: scale(2.2); opacity: 0; } }
 .leaflet-container { font: inherit; } .leaflet-container a { color: var(--text-2); }
 .leaflet-tooltip { font-weight: 600; font-size: 12px; border-radius: 6px; }
+#fleetMap { height: 320px; width: 100%; background: #e9eef3; }
+.check { display: flex; align-items: center; gap: 8px; cursor: pointer; }

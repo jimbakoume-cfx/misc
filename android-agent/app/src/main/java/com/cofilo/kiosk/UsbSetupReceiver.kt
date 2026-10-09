@@ -18,6 +18,7 @@ class UsbSetupReceiver : BroadcastReceiver() {
             !Policy.isOwner(context) -> "ignored: not the device owner"
             prefs.enrolled -> "ignored: already enrolled"
             !url.startsWith("https://") || code.isEmpty() -> "ignored: need an https server_url and an enroll_token"
+            !allowedHost(url) -> "ignored: server_url host is not one of ${BuildConfig.ALLOWED_SERVER_HOSTS}"
             else -> {
                 prefs.serverUrl = url
                 prefs.enrollToken = code
@@ -28,5 +29,13 @@ class UsbSetupReceiver : BroadcastReceiver() {
             }
         }
         resultData = reply
+    }
+
+    /** Only the fleet's own servers may be configured over USB (built into the app), so a stray broadcast cannot re-point a phone. */
+    private fun allowedHost(url: String): Boolean {
+        val allowed = BuildConfig.ALLOWED_SERVER_HOSTS.split(",").map { it.trim().lowercase() }.filter { it.isNotEmpty() }
+        if (allowed.isEmpty()) return true
+        val host = runCatching { android.net.Uri.parse(url).host?.lowercase() }.getOrNull() ?: return false
+        return allowed.any { host == it || host.endsWith(".$it") }
     }
 }

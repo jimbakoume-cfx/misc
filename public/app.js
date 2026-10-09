@@ -11,7 +11,15 @@ const API_META = (document.querySelector('meta[name="kiosk-api"]')?.content ?? "
 const BASE = API_META ? API_META + "/" : new URL(".", location.href).pathname;
 const CROSS = !!API_META && new URL(BASE, location.href).origin !== location.origin;
 const api_ = (p) => BASE + p.replace(/^\//, "");
-const tokenStore = { get: () => { try { return sessionStorage.getItem("kiosk.token") || localStorage.getItem("kiosk.token") || ""; } catch { return ""; } }, set: (v) => { try { v ? localStorage.setItem("kiosk.token", v) : localStorage.removeItem("kiosk.token"); } catch { /* private mode */ } } };
+// The session token lives in sessionStorage (gone when the tab closes); it is kept in localStorage only when the
+// person ticks "stay signed in", so a shared computer does not keep an open session by default.
+const tokenStore = {
+  get: () => { try { return sessionStorage.getItem("kiosk.token") || localStorage.getItem("kiosk.token") || ""; } catch { return ""; } },
+  set: (v, persist = !!localStorage.getItem("kiosk.token")) => { try {
+    if (!v) { sessionStorage.removeItem("kiosk.token"); localStorage.removeItem("kiosk.token"); return; }
+    sessionStorage.setItem("kiosk.token", v); if (persist) localStorage.setItem("kiosk.token", v); else localStorage.removeItem("kiosk.token");
+  } catch { /* private mode */ } },
+};
 const ICONS = {
   grid: '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>',
   phone: '<rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/>',
@@ -92,7 +100,7 @@ async function api(method, url, body, raw) {
     });
     const data = await res.json().catch(() => ({}));
     if (res.status === 401 && url !== "/api/login") { tokenStore.set(""); showLogin(); throw new Error("Signed out"); }
-    if (data.token && /^\/api\/(login|me\/password|me\/2fa\/enable)$/.test(url)) tokenStore.set(data.token);
+    if (data.token && /^\/api\/(login|me\/password|me\/2fa\/enable)$/.test(url)) tokenStore.set(data.token, url === "/api/login" ? !!$("#remember")?.checked : undefined);
     if (!res.ok) { const e = new Error(data.error || `HTTP ${res.status}`); e.data = data; throw e; }
     if (data.need2faSetup) { location.hash = "#/account"; }
     if (method === "GET") cache.set(url, data);
@@ -287,14 +295,14 @@ pages.overview = {
 };
 
 // ---------- Devices ----------
-const dev = { q: "", group: "", status: "all", selected: new Set() };
+const dev = { q: "", group: "", status: "all", selected: new Set() , map: (() => { try { return localStorage.getItem("kiosk.fleetmap") === "1"; } catch { return false; } })() };
 let devAll = [], devGroups = [], devBudget = 0;
 pages.devices = {
   title: "dev.title", live: true,
   sub: ([all] = [[]]) => t("dev.sub", { n: all?.length ?? 0 }),
   skeleton: () => skTable(8),
   load: () => Promise.all([get("/api/devices"), get("/api/groups"), get("/api/settings").catch(() => ({}))]),
-  actions: () => `<button class="btn ghost" id="csv" title="${esc(t("common.export"))}">${ic("download")}<span class="lbl">${t("common.export")}</span></button>${canWrite() ? `<button class="btn" data-go="provision" title="${esc(t("dev.add"))}">${ic("plus")}<span class="lbl">${t("dev.add")}</span></button>` : ""}`,
+  actions: () => `<button class="btn ghost" id="fleetMapBtn" aria-pressed="${dev.map ? "true" : "false"}" title="${esc(t("dev.map"))}">${ic("pin")}<span class="lbl">${t("dev.map")}</span></button><button class="btn ghost" id="csv" title="${esc(t("common.export"))}">${ic("download")}<span class="lbl">${t("common.export")}</span></button>${canWrite() ? `<button class="btn" data-go="provision" title="${esc(t("dev.add"))}">${ic("plus")}<span class="lbl">${t("dev.add")}</span></button>` : ""}`,
   render([all, groups, settings]) {
     devAll = all; devGroups = groups; devBudget = settings?.dataBudgetMb || 0;
     const c = { all: all.length, online: all.filter((d) => d.state === "online").length, offline: all.filter((d) => d.state !== "online").length, pending: all.filter((d) => !d.approved).length,
@@ -307,12 +315,17 @@ pages.devices = {
       <div class="seg">${seg("all", t("dev.seg.all"), c.all)}${seg("online", t("dev.seg.online"), c.online)}${seg("offline", t("dev.seg.offline"), c.offline)}${c.alerts ? seg("alerts", t("dev.seg.alerts"), c.alerts) : ""}${c.pending ? seg("pending", t("dev.seg.pending"), c.pending) : ""}${c.unmanaged ? seg("unmanaged", t("dev.seg.unmanaged"), c.unmanaged) : ""}${c.lost ? seg("lost", t("dev.seg.lost"), c.lost) : ""}</div>
       <select id="fg" aria-label="${esc(t("th.group"))}"><option value="">${t("dev.groups.all")}</option><option value="none" ${dev.group === "none" ? "selected" : ""}>${t("dev.groups.none")}</option>${groups.map((g) => `<option value="${g.id}" ${String(dev.group) === String(g.id) ? "selected" : ""}>${esc(g.name)}</option>`).join("")}</select>
     </div>
+    ${dev.map ? `<div class="mapcard fleet" style="margin-bottom:14px"><div id="fleetMap"></div><div class="mapft"><span>${ic("pin")} ${t("dev.map.n", { n: all.filter((d) => d.location).length, total: all.length })}</span></div></div>` : ""}
     <div class="card tablecard devtable"><div class="tablewrap"><table>
       <thead><tr><th class="chk"><input type="checkbox" id="all" aria-label="Select all"></th><th>${t("th.phone")}</th><th>${t("th.status")}</th><th>${t("th.battery")}</th><th>${t("th.network")}</th><th>${t("th.data")}</th><th>${t("th.group")}</th><th>${t("th.seen")}</th><th></th></tr></thead>
       <tbody id="rows"></tbody></table></div></div>
     <div class="devcards" id="cards"></div>`;
   },
-  bind() { drawRows(); $("#csv")?.addEventListener("click", exportCsv); },
+  bind() {
+    drawRows(); $("#csv")?.addEventListener("click", exportCsv);
+    $("#fleetMapBtn")?.addEventListener("click", () => { dev.map = !dev.map; try { localStorage.setItem("kiosk.fleetmap", dev.map ? "1" : ""); } catch { /* ignore */ } paint("devices", pageData.devices); });
+    drawFleetMap(devAll);
+  },
 };
 const hasAlert = (d) => d.lostMode || !!d.problem || !d.deviceOwner || d.released || (devBudget && d.dataMonth && d.dataMonth.mobileBytes > devBudget * 1048576);
 function visibleDevices() {
@@ -393,7 +406,25 @@ const minutes = (m) => m >= 60 ? t("d.data.h.short", { h: Math.floor(m / 60), m:
 
 // --- device drawer ---
 // ---------- phone map (Leaflet + OpenStreetMap tiles, both free; Leaflet is bundled under vendor/) ----------
-let devMap = null;
+let devMap = null, fleetMap = null;
+const OSM = () => L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, referrerPolicy: "strict-origin-when-cross-origin", attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>' });
+/** Every phone with a known position on one map: green live/online, amber stale, grey offline, red lost. */
+function drawFleetMap(all) {
+  const el = $("#fleetMap");
+  if (fleetMap) { fleetMap.remove(); fleetMap = null; }
+  if (!el || !window.L) return;
+  const pts = all.filter((d) => d.location && Number.isFinite(Number(d.location.lat)));
+  const map = L.map(el, { zoomControl: true, scrollWheelZoom: false }); OSM().addTo(map);
+  const colour = (d) => d.lostMode ? "#b42318" : d.state === "online" ? "#067647" : d.state === "stale" ? "#b54708" : "#667085";
+  for (const d of pts) {
+    const m = L.circleMarker([Number(d.location.lat), Number(d.location.lon)], { radius: 9, color: "#fff", weight: 2, fillColor: colour(d), fillOpacity: 0.95 }).addTo(map);
+    m.bindTooltip(`<b>${esc(d.driverName || d.name)}</b><br>${esc(t("state." + d.state))} · ${esc(ago(d.location.at))}`, { direction: "top", offset: [0, -8] });
+    m.on("click", () => openDevice(d.id));
+  }
+  if (pts.length) map.fitBounds(L.latLngBounds(pts.map((d) => [Number(d.location.lat), Number(d.location.lon)])).pad(0.2), { maxZoom: 15 });
+  else map.setView([3.87, 11.52], 6);
+  fleetMap = map; setTimeout(() => map.invalidateSize(), 50);
+}
 function mapCard(d, id) {
   const L_ = d.location, locating = locateWatch?.id === id;
   const btn = canWrite() ? `<button class="btn ${L_ ? "ghost" : ""} sm ${locating ? "busy" : ""}" data-cmd="locate">${L_ ? ic("refresh") + " " : ""}${locating ? t("d.map.locating") : L_ ? t("d.map.locate") : t("cmd.locate")}</button>` : "";

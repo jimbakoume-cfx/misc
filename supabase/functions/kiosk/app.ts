@@ -223,6 +223,9 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
     }
     return cfg;
   };
+  // A phone is "live" when it said its push channel was up AND it has checked in within the push interval: a phone
+  // whose channel died in deep sleep reports live until its next check-in, which this ages out.
+  const isLive = (d: Row) => !!json(d.status, {}).pushConnected && !!d.last_seen && now() - d.last_seen < cfg.push * 1000 + 60_000;
   const statusOf = (d: Row) => {
     const st = json(d.status, {});
     const iv = (st.pushConnected ? cfg.push : cfg.hb) * 1000;
@@ -257,7 +260,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
       deviceOwner: !!status.deviceOwner, released: !!status.released,
       freeStorageMb: status.freeStorageMb ?? null, uptimeMin: status.uptimeMin ?? null, notes: d.notes,
       hasOverride: d.allowed_override != null, removing: !!d.remove_pending, approved: !!d.approved,
-      lastCrash: status.lastCrash || "", lastError: status.lastError || "", live: !!status.pushConnected,
+      lastCrash: status.lastCrash || "", lastError: status.lastError || "", live: isLive(d),
       imei: d.imei || status.imei || "", simOperator: status.simOperator ?? "", phoneNumber: status.phoneNumber ?? "",
       signal: status.signal ?? null, securityPatch: d.security_patch || status.securityPatch || "",
       usageAccess: !!status.usageAccess, lang: status.lang ?? "", autoBlocker: status.autoBlocker ?? "",
@@ -332,33 +335,49 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
   const who = (c: Ctx) => c.admin!.email;
   const reply = (data: unknown, status = 200, headers: Record<string, string> = {}) =>
     new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json", "cache-control": "no-store", ...headers } });
-  // A dashboard served from another host (static hosting) signs in with a bearer token, never cookies, so the API can
-  // answer any origin: a third-party page gains nothing without a token, and cookie sessions are same-origin only.
+  // A dashboard served from another host (static hosting) signs in with a bearer token, never cookies. Only the known
+  // dashboard origins (DASHBOARD_ORIGINS, comma-separated, plus this function's own) get CORS headers.
+  const origins = new Set((env.DASHBOARD_ORIGINS ?? "https://confiance-kiosk-console.netlify.app,https://jimbakoume-cfx.github.io").split(",").map((o) => o.trim()).filter(Boolean));
+  if (publicUrl) try { origins.add(new URL(publicUrl).origin); } catch { /* ignore */ }
   const CORS: Record<string, string> = {
-    "access-control-allow-origin": "*",
     "access-control-allow-methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
     "access-control-allow-headers": "authorization, content-type, x-requested-with",
     "access-control-max-age": "86400",
   };
-  const withCors = (res: Response) => { for (const [k, v] of Object.entries(CORS)) res.headers.set(k, v); return res; };
+  const withCors = (res: Response, origin: string | null) => {
+    if (!origin || !origins.has(origin)) return res;
+    res.headers.set("access-control-allow-origin", origin); res.headers.set("vary", "Origin");
+    for (const [k, v] of Object.entries(CORS)) res.headers.set(k, v);
+    return res;
+  };
 
   add("GET", "/healthz", "none", async () => ({ ok: true }));
 
-  // Failed sign-ins are counted per IP+email and per IP; 8 failures lock that key for 5 minutes.
+  // Failed attempts are counted per key; a key over its limit is locked for 5 minutes. Keys are IP+account, IP and
+  // the account alone (`acct|`), so a caller who forges addresses still runs into the per-account limit.
+  const LIMITS: Record<string, number> = { acct: 20, enroll: 30 };
   async function throttled(keys: string[]) {
     for (const k of keys) {
       const a = await get("SELECT * FROM login_attempts WHERE key=?", k);
-      if (a && a.n >= 8 && a.until_ts > now()) throw new HttpError(429, "Too many attempts, try again in a few minutes");
+      const limit = LIMITS[k.split("|")[0]] ?? 8;
+      if (a && a.n >= limit && a.until_ts > now()) throw new HttpError(429, "Too many attempts, try again in a few minutes");
     }
   }
   const failed = (keys: string[]) => Promise.all(keys.map((k) =>
     run("INSERT INTO login_attempts(key,n,until_ts) VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET n=login_attempts.n+1, until_ts=excluded.until_ts", k, now() + 5 * 60_000)));
-  const clientIp = (c: Ctx) => c.req.headers.get("x-nf-client-connection-ip") ?? c.req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? c.req.headers.get("cf-connecting-ip") ?? "ip";
+  // Netlify sets the client address itself; behind the Supabase gateway the trustworthy value is the LAST one in
+  // X-Forwarded-For (the gateway appends it), never the first, which the caller can forge.
+  const clientIp = (c: Ctx) => {
+    const nf = c.req.headers.get("x-nf-client-connection-ip")?.trim();
+    if (nf) return nf;
+    const xff = (c.req.headers.get("x-forwarded-for") ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+    return xff[xff.length - 1] ?? c.req.headers.get("cf-connecting-ip") ?? "ip";
+  };
 
   add("POST", "/api/login", "none", async (c) => {
     const email = String(c.body.email ?? "").toLowerCase().trim();
     const ip = clientIp(c);
-    const keys = [`${ip}|${email}`, `ip|${ip}`];
+    const keys = [`${ip}|${email}`, `ip|${ip}`, `acct|${email}`];
     await throttled(keys);
     const admin = await get("SELECT * FROM admins WHERE email=?", email);
     if (!admin || !verifyPassword(String(c.body.password ?? ""), admin.pass_hash)) {
@@ -386,13 +405,22 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
         return reply({ error: "That code is not right", needs2fa: true }, 401);
       }
     }
-    await run("DELETE FROM login_attempts WHERE key=?", keys[0]);
+    await run("DELETE FROM login_attempts WHERE key=? OR key=?", keys[0], keys[2]);
     const token = signSession(secret, { id: admin.id, email: admin.email, role: admin.role, sv: admin.session_version });
     await audit(admin.email, "login", `from ${ip}`);
     return reply({ email: admin.email, role: admin.role, token, twoFactor: !!admin.totp_enabled }, 200, { "set-cookie": sessionCookie(c, token) });
   });
-  add("POST", "/api/logout", "none", async () =>
-    reply({ ok: true }, 200, { "set-cookie": `kiosk_session=; HttpOnly; SameSite=Strict; Path=${cookiePath}; Max-Age=0` }));
+  // Signing out revokes the session on the server (every browser of that account), not only in this browser.
+  add("POST", "/api/logout", "none", async (c) => {
+    const h = c.req.headers.get("authorization");
+    const cookie = /(?:^|;\s*)kiosk_session=([^;]+)/.exec(c.req.headers.get("cookie") ?? "")?.[1];
+    const s = verifySession(secret, h?.startsWith("Bearer ") ? h.slice(7) : cookie);
+    if (s) {
+      await run("UPDATE admins SET session_version=session_version+1 WHERE id=?", s.id);
+      await audit(s.email, "logout");
+    }
+    return reply({ ok: true }, 200, { "set-cookie": `kiosk_session=; HttpOnly; SameSite=Strict; Path=${cookiePath}; Max-Age=0` });
+  });
   add("GET", "/api/me", "read", async (c) => {
     const a = (await get("SELECT totp_enabled FROM admins WHERE id=?", c.admin!.id))!;
     return { email: c.admin!.email, role: c.admin!.role, twoFactor: !!a.totp_enabled, mustSetup2fa: await needs2faSetup(c.admin!) };
@@ -487,11 +515,18 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
   const restInfo = () => (pushOn ? { url: `${supabaseUrl}/rest/v1`, key: supabaseKey } : null);
   add("POST", "/api/device/enroll", "none", async (c) => {
     const b = c.body;
-    const r = await sqlFn("kiosk_enroll", String(b.enrollToken ?? ""), {
-      androidId: b.androidId ?? "", serial: b.serial ?? "", model: b.model ?? "", osVersion: b.osVersion ?? "",
-      securityPatch: b.securityPatch ?? "", imei: b.imei ?? "", simSerial: b.simSerial ?? "",
-    });
-    return { ...r, rest: restInfo() };
+    const keys = [`enroll|${clientIp(c)}`];
+    await throttled(keys);
+    try {
+      const r = await sqlFn("kiosk_enroll", String(b.enrollToken ?? ""), {
+        androidId: b.androidId ?? "", serial: b.serial ?? "", model: b.model ?? "", osVersion: b.osVersion ?? "",
+        securityPatch: b.securityPatch ?? "", imei: b.imei ?? "", simSerial: b.simSerial ?? "",
+      });
+      return { ...r, rest: restInfo() };
+    } catch (e) {
+      if (e instanceof HttpError && e.status === 403) await failed(keys);
+      throw e;
+    }
   });
   const bearer = (c: Ctx) => { const h = c.req.headers.get("authorization") ?? ""; return h.startsWith("Bearer ") ? h.slice(7) : ""; };
   add("POST", "/api/device/heartbeat", "none", async (c) => {
@@ -527,7 +562,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
     top.sort((a, b) => b.mobileBytes - a.mobileBytes);
     return {
       ...counts, currentVersion: rel?.version_name ?? null, currentVersionCode: rel?.version_code ?? 0, intervalSec: cfg.hb, push: pushOn,
-      live: devices.filter((d) => json(d.status, {}).pushConnected).length,
+      live: devices.filter(isLive).length,
       data: { mobileBytes: mobile, wifiBytes: wifi, budgetMb: num(budget), top: top.slice(0, 5) },
       alerts: alertRows(alertRowsRaw),
     };
@@ -859,6 +894,10 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
   // Hourly job (pg_cron → this function): offline sweep + alert e-mails. Also usable by any external scheduler.
   add("POST", "/api/cron", "cron", async () => {
     await sweep(true);
+    // Brute-force watch: more than 20 failed sign-ins in the last hour raises a fleet-level "security" alert.
+    const bad = num((await get("SELECT COUNT(*)::int n FROM audit WHERE action='login-failed' AND ts>?", now() - 3_600_000))?.n);
+    if (bad > 20) await run("SELECT kiosk_alert(NULL, 'security', ?)", `${bad} failed sign-ins in the last hour`);
+    else await run("UPDATE alerts SET active=0, cleared_at=? WHERE device_id IS NULL AND kind='security' AND active=1", now());
     const mail = await emailAlerts();
     return { ok: true, ...mail };
   });
@@ -1012,7 +1051,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
     try {
       const path = stripBase(url.pathname);
       if (path === null) return reply({ error: "Not found" }, 404);
-      if (req.method === "OPTIONS") return withCors(new Response(null, { status: 204 }));
+      if (req.method === "OPTIONS") return withCors(new Response(null, { status: 204 }), req.headers.get("origin"));
       const base = publicUrl || url.origin;
       await init(base);
       await intervals();
@@ -1065,11 +1104,13 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
         }
       }
       const out = await matched.fn(ctx);
-      return timed(withCors(out instanceof Response ? out : reply(out)));
+      return timed(withCors(out instanceof Response ? out : reply(out), req.headers.get("origin")));
     } catch (e: any) {
-      if (e instanceof HttpError) return timed(withCors(reply({ error: e.message }, e.status)));
-      console.error(e);
-      return timed(withCors(reply({ error: "Server error" }, 500)));
+      if (e instanceof HttpError) return timed(withCors(reply({ error: e.message }, e.status), req.headers.get("origin")));
+      // A short id ties the generic answer to the full stack in the function logs.
+      const rid = randomToken(6);
+      console.error(`[${rid}]`, e);
+      return timed(withCors(reply({ error: `Server error (ref ${rid})` }, 500), req.headers.get("origin")));
     }
   };
 }

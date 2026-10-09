@@ -79,6 +79,9 @@ class InstallResultReceiver : BroadcastReceiver() {
     private fun retryAfterRestart(ctx: Context, prefs: Prefs, pkg: String) {
         if (!Policy.isOwner(ctx)) return
         if (System.currentTimeMillis() - prefs.lastInstallReboot < REBOOT_EVERY_MS) return
+        // Never restart a phone in the middle of a call; the next check-in retries.
+        val tm = ctx.getSystemService(Context.TELEPHONY_SERVICE) as? android.telephony.TelephonyManager
+        if (runCatching { tm?.callState != android.telephony.TelephonyManager.CALL_STATE_IDLE }.getOrDefault(false)) return
         Policy.disableAutoBlocker(ctx)
         prefs.lastInstallReboot = System.currentTimeMillis()
         prefs.lastUpdateAttempt = 0L // retry the self-update at the first check-in after boot
