@@ -227,3 +227,19 @@ tr.lostrow td:nth-child(2) b::before, .devcard.lostrow .dev b::before { content:
 
 .topbar .btn .lbl { margin-left: 6px; }
 @media (max-width: 640px) { .topbar .btn .lbl { display: none; } .topbar .btn { padding: 0 10px; } }
+
+/* ---------- phone map ---------- */
+.mapcard { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
+#devMap { height: 280px; width: 100%; background: #e9eef3; }
+.mapft { display: flex; align-items: center; gap: 10px; padding: 10px 14px; font-size: 13px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.mapft > span:first-child { display: inline-flex; align-items: center; gap: 6px; }
+.mapcard.empty { display: flex; align-items: center; gap: 14px; padding: 18px 20px; color: var(--text-2); }
+.mapcard.empty > svg { width: 22px; height: 22px; flex: none; color: var(--text-3); }
+.mapcard.empty .t { display: flex; flex-direction: column; gap: 2px; flex: 1; } .mapcard.empty .t b { color: var(--text); } .mapcard.empty .t span { font-size: 13px; color: var(--text-3); }
+.locdot-wrap { background: none; border: none; }
+.locdot { position: relative; display: block; width: 22px; height: 22px; }
+.locdot i { position: absolute; inset: 4px; border-radius: 50%; background: #175cd3; border: 3px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.35); }
+.locdot::before { content: ""; position: absolute; inset: 0; border-radius: 50%; background: rgba(23,92,211,.35); animation: locpulse 2s ease-out infinite; }
+@keyframes locpulse { 0% { transform: scale(.6); opacity: 1; } 100% { transform: scale(2.2); opacity: 0; } }
+.leaflet-container { font: inherit; } .leaflet-container a { color: var(--text-2); }
+.leaflet-tooltip { font-weight: 600; font-size: 12px; border-radius: 6px; }
