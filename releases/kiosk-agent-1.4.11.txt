@@ -1,0 +1,8 @@
+Package:            com.cofilo.kiosk
+App name:           Confiance Kiosk
+Admin component:    com.cofilo.kiosk/.AdminReceiver
+Version:            1.4.11 (code 24)
+Cert SHA-256 (QR):  XeoIrAWAbYI7udlW8sbtVACe0PkY2EH11nXoQlVJdCU
+Signed with:        kiosk-release.keystore (alias kiosk), created 2026-10-08; NOT the key used for 1.3.4
+SHA-256 (APK):      a1d49950d3d40ca9fd24e9a1f985b35fb5bf82b584a9f704583351219f6549c7
+Changes:            Locate answers in seconds (all location providers asked at once, 6 s cap); battery-optimisation exemption (USB setup whitelists it, else a one-time system dialog) so the live connection survives deep sleep; status.batteryExempt

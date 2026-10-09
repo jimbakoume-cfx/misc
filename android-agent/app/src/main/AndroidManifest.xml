@@ -33,6 +33,9 @@
     <!-- Lists the app under Settings > Install unknown apps, so a person can authorise it as an update source on phones
          whose vendor blocks installs from unlisted sources (Samsung Auto Blocker). Device-owner installs need no toggle. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Lets the app ask once to be exempt from battery optimisation, so the live connection (instant commands, Locate)
+         survives deep sleep. The USB setup grants it without asking (dumpsys deviceidle whitelist). -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />

@@ -46,6 +46,8 @@ for S in $DEVICES; do
   # Samsung Auto Blocker refuses every app that is not from a store (our updates included): switch it off now and let
   # the app keep it off. Only settings whose name starts with "rampart_" (Samsung's name for it) are touched.
   "$ADB" -s "$S" shell pm grant "$PKG" android.permission.WRITE_SECURE_SETTINGS >/dev/null 2>&1
+  # Deep sleep must not pause the live connection (instant commands and Locate): exempt the app from battery optimisation.
+  "$ADB" -s "$S" shell dumpsys deviceidle whitelist "+$PKG" >/dev/null 2>&1
   FOUND=""
   for NS in secure global; do
     for NAME in $("$ADB" -s "$S" shell settings list "$NS" 2>/dev/null | tr -d '\r' | grep -E '^(rampart_[^=]*(enabled|switch)[^=]*|block_unverified_apps)=' | cut -d= -f1); do

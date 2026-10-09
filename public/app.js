@@ -394,13 +394,31 @@ const minutes = (m) => m >= 60 ? t("d.data.h.short", { h: Math.floor(m / 60), m:
 // --- device drawer ---
 // ---------- phone map (Leaflet + OpenStreetMap tiles, both free; Leaflet is bundled under vendor/) ----------
 let devMap = null;
+function mapCard(d, id) {
+  const L_ = d.location, locating = locateWatch?.id === id;
+  const btn = canWrite() ? `<button class="btn ${L_ ? "ghost" : ""} sm ${locating ? "busy" : ""}" data-cmd="locate">${L_ ? ic("refresh") + " " : ""}${locating ? t("d.map.locating") : L_ ? t("d.map.locate") : t("cmd.locate")}</button>` : "";
+  if (!L_) return `<div class="mapcard empty" id="devMapEmpty" data-dev="${id}">${ic("pin")}<div class="t"><b>${t("d.map.none")}</b><span>${locating ? t("d.map.locating.p") : t("d.map.none.p")}</span></div>${btn}</div>`;
+  const lat = Number(L_.lat), lon = Number(L_.lon);
+  return `<div class="mapcard"><div id="devMap" data-dev="${id}" data-lat="${lat}" data-lon="${lon}" data-acc="${Number(L_.accuracy) || 0}"></div>
+    <div class="mapft"><span>${ic("pin")} ${locating ? t("d.map.locating.p") : t("d.map.at", { ago: ago(L_.at) })}${L_.accuracy && !locating ? ` <span class="muted">· ±${Math.round(L_.accuracy)} m</span>` : ""}</span>
+    ${btn}<a class="btn quiet sm" href="https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=16/${lat}/${lon}" target="_blank" rel="noopener">${t("d.map.open")}</a></div></div>`;
+}
+/** Redraws the map card of the open phone page in place (no full reload). */
+function refreshMapCard(d, id) {
+  const slot = $("#mapSlot"); if (!slot || !$("#dlg").open) return;
+  slot.innerHTML = mapCard(d, id);
+  $$("[data-cmd=locate]", slot).forEach((b) => b.onclick = () => busy(b, () => $("#dlg")._locate?.()));
+  drawDeviceMap(d);
+}
 function drawDeviceMap(d) {
   const el = $("#devMap");
   if (devMap) { devMap.remove(); devMap = null; }
   if (!el || !window.L || !d.location) return;
   const lat = Number(el.dataset.lat), lon = Number(el.dataset.lon), acc = Number(el.dataset.acc) || 0;
   const map = L.map(el, { zoomControl: true, attributionControl: true, scrollWheelZoom: false });
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>' }).addTo(map);
+  // OpenStreetMap's tile policy requires a Referer; the dashboard's own Referrer-Policy is "no-referrer", so the tile
+  // images carry their own policy (origin only).
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, referrerPolicy: "strict-origin-when-cross-origin", attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>' }).addTo(map);
   const label = esc(d.driverName || d.name);
   if (acc > 0) L.circle([lat, lon], { radius: acc, color: "#175cd3", weight: 1, fillColor: "#175cd3", fillOpacity: 0.12 }).addTo(map);
   L.marker([lat, lon], { icon: L.divIcon({ className: "locdot-wrap", html: `<span class="locdot"><i></i></span>`, iconSize: [22, 22], iconAnchor: [11, 11] }), title: label }).addTo(map)
@@ -409,18 +427,21 @@ function drawDeviceMap(d) {
   devMap = map;
   setTimeout(() => map.invalidateSize(), 50);
 }
-// After "Locate", the phone answers at its next check-in (seconds when live): poll for a newer fix for up to a minute
-// and redraw the open phone page when it arrives.
+// After "Locate", the phone answers at its next check-in (a few seconds when it is live): the map card shows
+// "Locating…", a newer fix is polled for every 1.5 s for up to two minutes, and the card redraws in place when it lands.
 let locateWatch = null;
-function watchLocation(id, before) {
+function watchLocation(id, before, d) {
   if (locateWatch) clearInterval(locateWatch.iv);
   const t0 = Date.now();
+  let polling = false;
   locateWatch = { id, iv: setInterval(async () => {
-    const open = $("#devMap, #devMapEmpty")?.dataset.dev === String(id) && $("#dlg").open;
-    if (!open || Date.now() - t0 > 90_000) { clearInterval(locateWatch.iv); locateWatch = null; return; }
-    const nd = await get(`/api/devices/${id}`).catch(() => null);
-    if (nd?.location && (nd.location.at ?? 0) > (before ?? 0)) { clearInterval(locateWatch.iv); locateWatch = null; toast(t("d.map.updated")); openDevice(id); }
-  }, 3000) };
+    const open = $("#mapSlot [data-dev]")?.dataset.dev === String(id) && $("#dlg").open;
+    if (!open || Date.now() - t0 > 120_000) { clearInterval(locateWatch.iv); locateWatch = null; if (open) { toast(t("d.map.timeout"), "err"); refreshMapCard(d, id); } return; }
+    if (polling) return; polling = true;
+    const nd = await get(`/api/devices/${id}`).catch(() => null); polling = false;
+    if (nd?.location && (nd.location.at ?? 0) > (before ?? 0)) { clearInterval(locateWatch.iv); locateWatch = null; toast(t("d.map.updated")); refreshMapCard(nd, id); }
+  }, 1500) };
+  refreshMapCard(d, id);
 }
 
 async function openDevice(id) {
@@ -467,11 +488,7 @@ async function openDevice(id) {
       ${appUsage.length ? `<h4 class="subh">${t("d.data.apps")}</h4><div class="apptime">${appUsage.slice(0, 8).map(([pkg, m]) => `<div><span>${esc(known.get(pkg) ?? pkg)}</span><i><b style="width:${Math.min(100, (m / Math.max(1, appUsage[0][1])) * 100)}%"></b></i><span class="nowrap">${minutes(m)}</span></div>`).join("")}</div>` : ""}
 
       <h3 style="margin:24px 0 8px">${t("d.map.h")}</h3>
-      ${d.location
-        ? `<div class="mapcard"><div id="devMap" data-dev="${id}" data-lat="${Number(d.location.lat)}" data-lon="${Number(d.location.lon)}" data-acc="${Number(d.location.accuracy) || 0}"></div>
-           <div class="mapft"><span>${ic("pin")} ${t("d.map.at", { ago: ago(d.location.at) })}${d.location.accuracy ? ` <span class="muted">· ±${Math.round(d.location.accuracy)} m</span>` : ""}</span><span class="grow"></span>
-           ${canWrite() ? `<button class="btn ghost sm" data-cmd="locate">${ic("refresh")} ${t("d.map.locate")}</button>` : ""}<a class="btn quiet sm" href="https://www.openstreetmap.org/?mlat=${Number(d.location.lat)}&mlon=${Number(d.location.lon)}#map=16/${Number(d.location.lat)}/${Number(d.location.lon)}" target="_blank" rel="noopener">${t("d.map.open")}</a></div></div>`
-        : `<div class="mapcard empty" id="devMapEmpty" data-dev="${id}">${ic("pin")}<div class="t"><b>${t("d.map.none")}</b><span>${t("d.map.none.p")}</span></div>${canWrite() ? `<button class="btn sm" data-cmd="locate">${t("cmd.locate")}</button>` : ""}</div>`}
+      <div id="mapSlot">${mapCard(d, id)}</div>
 
       ${canWrite() ? `<h3 style="margin:24px 0 2px">${t("d.controls")}</h3><p class="hint" style="margin:0">${d.live ? t("d.controls.live") : t("d.controls.poll")}</p>
       <div class="cmdgrid">
@@ -504,10 +521,20 @@ async function openDevice(id) {
   $$("[data-uview]", dlg).forEach((b) => b.onclick = () => { $$("[data-uview]", dlg).forEach((x) => x.classList.toggle("on", x === b)); $("#uchart").classList.toggle("hidden", b.dataset.uview !== "chart"); $("#utable").classList.toggle("hidden", b.dataset.uview !== "table"); });
   drawDeviceMap(d);
   const reopen = () => openDevice(id);
-  const send = async (type, body = {}, msgOk = true) => { await api("POST", `/api/devices/${id}/commands`, { type, ...body }); if (msgOk) toast(d.live ? t("cmd.sent.live") : t("cmd.sent.poll")); if (type === "locate") watchLocation(id, d.location?.at ?? 0); reopen(); refresh(); };
+  const send = async (type, body = {}, msgOk = true) => {
+    if (type === "locate") {
+      // Stays on the page: the map card shows "Locating…" and redraws itself the moment the phone answers.
+      if (locateWatch?.id === id) return;
+      await api("POST", `/api/devices/${id}/commands`, { type });
+      watchLocation(id, d.location?.at ?? 0, d);
+      return;
+    }
+    await api("POST", `/api/devices/${id}/commands`, { type, ...body }); if (msgOk) toast(d.live ? t("cmd.sent.live") : t("cmd.sent.poll")); reopen(); refresh();
+  };
+  dlg._locate = () => send("locate");
   $$("[data-cmd]", dlg).forEach((b) => b.onclick = () => busy(b, async () => {
     const type = b.dataset.cmd;
-    const desc = { reboot: "cmd.reboot.d", lock: "cmd.lock.d", release: "cmd.release.d", relock: "cmd.relock.d", ring: "cmd.ring.d", locate: "cmd.locate.d" }[type];
+    const desc = { reboot: "cmd.reboot.d", lock: "cmd.lock.d", release: "cmd.release.d", relock: "cmd.relock.d", ring: "cmd.ring.d" }[type];
     if (desc && !(await ask({ title: t("cmd.ask", { action: b.textContent.trim() }), body: t(desc), ok: b.textContent.trim() }))) return;
     await send(type);
   }));
