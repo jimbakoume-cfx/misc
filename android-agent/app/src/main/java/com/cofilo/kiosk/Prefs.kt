@@ -39,8 +39,12 @@ class Prefs(context: Context) {
         set(v) = put("enrollToken", v)
 
     var deviceToken: String
-        get() = str("deviceToken")
-        set(v) = put("deviceToken", v)
+        get() {
+            val raw = str("deviceToken")
+            if (raw.isNotEmpty() && !Vault.isSealed(raw)) { deviceToken = raw; return raw } // migrate a plain value
+            return Vault.open(raw)
+        }
+        set(v) = put("deviceToken", Vault.seal(v))
 
     var deviceName: String
         get() = str("deviceName")

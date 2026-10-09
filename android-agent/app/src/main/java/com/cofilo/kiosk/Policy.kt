@@ -49,6 +49,7 @@ object Policy {
         UserManager.DISALLOW_NETWORK_RESET,
         UserManager.DISALLOW_FUN,
         UserManager.DISALLOW_CONFIG_DATE_TIME,
+        UserManager.DISALLOW_CONFIG_LOCALE,
         UserManager.DISALLOW_APPS_CONTROL,          // no force-stop / clear-data / uninstall from Settings
         UserManager.DISALLOW_SYSTEM_ERROR_DIALOGS,  // no "app isn't responding" pop-ups
     )

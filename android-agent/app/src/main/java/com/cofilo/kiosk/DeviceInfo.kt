@@ -121,7 +121,6 @@ object DeviceInfo {
             .put("pushConnected", PushClient.connected)
             .put("uptimeMin", SystemClock.elapsedRealtime() / 60000)
             .put("securityPatch", securityPatch())
-            .put("imei", imei(ctx))
             .put("simSerial", simSerial(ctx))
             .put("simOperator", simOperator(ctx))
             .put("phoneNumber", phoneNumber(ctx))

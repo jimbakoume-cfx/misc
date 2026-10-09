@@ -45,6 +45,7 @@ import kotlin.concurrent.thread
  * "Report a problem", system brightness, and admin actions for usage access and lost mode.
  */
 class MainActivity : Activity() {
+    private val TEMP_ALLOW_MS = 90_000L
     private lateinit var root: LinearLayout
     private var adminTaps = 0
     private var insetTop = 0
@@ -590,6 +591,36 @@ class MainActivity : Activity() {
                 col.addView(Ui.text(this, tr("This phone is managed from the dashboard.", "Ce téléphone est géré depuis le tableau de bord."), 12f, Ui.muted)
                     .apply { setPadding(0, dp(12), 0, 0) })
             }
+            col.addView(Ui.gap(this, 6))
+            actionRow(col, tr("What this phone reports", "Ce que ce téléphone transmet")) { dlg.dismiss(); privacyNotice() }
+            actionRow(col, tr("Close", "Fermer"), primary = true) { dlg.dismiss() }
+        }
+    }
+
+    /** Plain-language notice of what the company sees; shown from Settings so every driver can read it. */
+    private fun privacyNotice() {
+        showSheet(tr("What this phone reports", "Ce que ce téléphone transmet")) { dlg, col ->
+            val p = Prefs(this)
+            val lines = listOf(
+                tr("This is a company phone managed by your employer. Every few minutes the app sends to the fleet dashboard:",
+                   "Ce téléphone professionnel est géré par votre employeur. Toutes les quelques minutes, l'application envoie au tableau de bord :"),
+                tr("• battery level, network type and signal, free storage, phone model and Android version",
+                   "• niveau de batterie, type de réseau et signal, espace libre, modèle et version Android"),
+                tr("• the list of installed apps and, per allowed app, the minutes used today",
+                   "• la liste des applications installées et, par application autorisée, les minutes d'utilisation du jour"),
+                tr("• mobile and Wi-Fi data used, against the fleet's monthly budget",
+                   "• les données mobiles et Wi-Fi consommées, par rapport au budget mensuel de la flotte"),
+                tr("• the phone's identifiers (IMEI, SIM) once at setup, and when the SIM card changes",
+                   "• les identifiants du téléphone (IMEI, SIM) une fois à l'installation, et lorsque la carte SIM change"),
+                if (p.reportLocation) tr("• its position at every check-in (location reporting is ON for this fleet)",
+                                         "• sa position à chaque connexion (la localisation est ACTIVÉE pour cette flotte)")
+                else tr("• its position only when an administrator asks to locate it (location reporting is OFF)",
+                        "• sa position uniquement lorsqu'un administrateur demande de le localiser (la localisation est DÉSACTIVÉE)"),
+                tr("Nothing else: no messages, calls, photos or browsing are read.",
+                   "Rien d'autre : ni messages, ni appels, ni photos, ni navigation ne sont lus."),
+            )
+            for (l in lines) col.addView(Ui.text(this, l, 14f, Ui.ink).apply { setPadding(0, dp(4), 0, dp(4)) })
+            col.addView(Ui.gap(this, 8))
             actionRow(col, tr("Close", "Fermer"), primary = true) { dlg.dismiss() }
         }
     }
@@ -729,16 +760,25 @@ class MainActivity : Activity() {
             Policy.apply(this)
             onFail()
         }
+        // Whatever was opened, the kiosk takes the screen back after 90 s: a driver cannot wander in Settings.
+        window.decorView.postDelayed({
+            if (tempAllowed) {
+                tempAllowed = false
+                Policy.apply(this)
+                startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP))
+            }
+        }, TEMP_ALLOW_MS)
     }
 
     /** Lets the system Wi-Fi panel open (the Settings app is otherwise blocked) and re-locks when we come back. */
     private fun openWifiPanel() {
         // The quick panel lives in different packages depending on the brand (Samsung ships its own Settings), so the
         // intent is resolved first and whichever package answers is allowed in the lock task for the time being.
+        // The panels are dialogs with no way into the rest of Settings; the full Wi-Fi screen is the last resort, and
+        // only the package that answers is allowed, never the whole Settings family.
         val candidates = listOf(Intent(Settings.Panel.ACTION_INTERNET_CONNECTIVITY), Intent(Settings.Panel.ACTION_WIFI), Intent(Settings.ACTION_WIFI_SETTINGS))
         val intent = candidates.firstOrNull { it.resolveActivity(packageManager) != null } ?: candidates.last()
-        val pkgs = (listOfNotNull(intent.resolveActivity(packageManager)?.packageName) +
-            listOf("com.android.settings", "com.samsung.android.app.settings", "com.android.settings.intelligence")).distinct().toTypedArray()
+        val pkgs = listOfNotNull(intent.resolveActivity(packageManager)?.packageName).ifEmpty { listOf("com.android.settings") }.toTypedArray()
         openTemporarily(intent, *pkgs) {
             Toast.makeText(this, tr("Could not open Wi-Fi settings", "Impossible d'ouvrir les réglages Wi-Fi"), Toast.LENGTH_LONG).show()
         }
