@@ -341,7 +341,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
   if (publicUrl) try { origins.add(new URL(publicUrl).origin); } catch { /* ignore */ }
   const CORS: Record<string, string> = {
     "access-control-allow-methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-    "access-control-allow-headers": "authorization, content-type, x-requested-with",
+    "access-control-allow-headers": "authorization, content-type, x-requested-with, x-region",
     "access-control-max-age": "86400",
   };
   const withCors = (res: Response, origin: string | null) => {

@@ -87,6 +87,9 @@ function barEnd() {
 // ---------- api ----------
 let me = null, tab = "overview", pageData = {}, refreshTimer = null;
 const cache = new Map(); // GET url -> last response (shown instantly, then refreshed)
+// The API runs next to its database when asked to (Supabase executes the function in that region); from far away a
+// page then takes a few hundred milliseconds instead of a few seconds, because every request opens a new connection.
+const API_REGION = "eu-west-3";
 async function api(method, url, body, raw) {
   barStart();
   try {
@@ -95,7 +98,7 @@ async function api(method, url, body, raw) {
     const tok = tokenStore.get();
     const res = await fetch(api_(url), {
       method, credentials: CROSS ? "omit" : "same-origin",
-      headers: { "x-requested-with": "confiance-dashboard", ...(tok ? { authorization: `Bearer ${tok}` } : {}), ...(raw ? { "content-type": "application/octet-stream" } : body ? { "content-type": "application/json" } : {}) },
+      headers: { "x-requested-with": "confiance-dashboard", "x-region": API_REGION, ...(tok ? { authorization: `Bearer ${tok}` } : {}), ...(raw ? { "content-type": "application/octet-stream" } : body ? { "content-type": "application/json" } : {}) },
       body: raw ?? (body ? JSON.stringify(body) : undefined),
     });
     const data = await res.json().catch(() => ({}));
