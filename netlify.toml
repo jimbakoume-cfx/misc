@@ -1,5 +1,5 @@
 # Static hosting for the dashboard (free plan: no functions are used). The API runs on Supabase (docs/DEPLOY.md);
-# /api, /apk and /healthz are proxied there at the CDN level, which keeps phones on the old address working (agent 1.3.x)
+# /api, /apk and /healthz are proxied there at the CDN level (X-Region runs the function next to its database), which keeps phones on the old address working (agent 1.3.x)
 # and lets the dashboard use same-origin cookies. Replace the project ref below if you deploy to a new Supabase project.
 [build]
   publish = "public"
@@ -9,18 +9,21 @@
   to = "https://qzkoowbcngcdnhqystwz.supabase.co/functions/v1/kiosk/api/:splat"
   status = 200
   force = true
+  headers = { X-Region = "eu-west-3" }
 
 [[redirects]]
   from = "/apk/*"
   to = "https://qzkoowbcngcdnhqystwz.supabase.co/functions/v1/kiosk/apk/:splat"
   status = 200
   force = true
+  headers = { X-Region = "eu-west-3" }
 
 [[redirects]]
   from = "/healthz"
   to = "https://qzkoowbcngcdnhqystwz.supabase.co/functions/v1/kiosk/healthz"
   status = 200
   force = true
+  headers = { X-Region = "eu-west-3" }
 
 [[redirects]]
   from = "/kiosk-agent.apk"
