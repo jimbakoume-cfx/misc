@@ -128,6 +128,7 @@ object DeviceInfo {
             .put("signal", signalLevel(ctx))
             .put("usageAccess", hasUsageAccess(ctx))
             .put("autoBlocker", runCatching { Policy.autoBlockerStatus(ctx) }.getOrDefault(""))
+            .put("batteryExempt", runCatching { (ctx.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager).isIgnoringBatteryOptimizations(ctx.packageName) }.getOrDefault(false))
             .put("lostMode", prefs.lostMode)
             .put("lang", prefs.lang.ifEmpty { Locale.getDefault().language })
     }
@@ -276,33 +277,34 @@ object DeviceInfo {
      * Blocking: call from the agent thread only.
      */
     @SuppressLint("MissingPermission")
-    fun freshLocation(ctx: Context, timeoutMs: Long = 10_000): JSONObject? {
+    fun freshLocation(ctx: Context, timeoutMs: Long = 6_000): JSONObject? {
         if (!hasLocationPermission(ctx)) return null
         if (Build.VERSION.SDK_INT >= 30) {
             val lm = ctx.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
             if (lm != null) {
-                for (provider in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
-                    val fix = runCatching { currentLocation(lm, provider, timeoutMs) }.getOrNull()
-                    if (fix != null) return toJson(fix)
+                // Every provider is asked at the same time and the first answer wins: the fused/network fix comes
+                // back in a second or two (indoors too), GPS only when the sky is visible. Asking one after the other
+                // used to cost a full GPS timeout before the network fix was even tried.
+                val providers = buildList {
+                    if (Build.VERSION.SDK_INT >= 31) add(LocationManager.FUSED_PROVIDER)
+                    add(LocationManager.GPS_PROVIDER); add(LocationManager.NETWORK_PROVIDER)
+                }.filter { runCatching { lm.isProviderEnabled(it) }.getOrDefault(false) }
+                val latch = CountDownLatch(1)
+                val result = java.util.concurrent.atomic.AtomicReference<Location?>(null)
+                val cancels = providers.map { provider ->
+                    val cancel = CancellationSignal()
+                    runCatching {
+                        lm.getCurrentLocation(provider, cancel, Executor { it.run() }, java.util.function.Consumer<Location?> { loc ->
+                            if (loc != null && result.compareAndSet(null, loc)) latch.countDown()
+                        })
+                    }
+                    cancel
                 }
+                if (providers.isNotEmpty()) latch.await(timeoutMs, TimeUnit.MILLISECONDS)
+                cancels.forEach { runCatching { it.cancel() } }
+                result.get()?.let { return toJson(it) }
             }
         }
         return lastKnownLocation(ctx)
-    }
-
-    @SuppressLint("MissingPermission")
-    private fun currentLocation(lm: LocationManager, provider: String, timeoutMs: Long): Location? {
-        if (Build.VERSION.SDK_INT < 30) return null
-        if (!lm.isProviderEnabled(provider)) return null
-        val latch = CountDownLatch(1)
-        var result: Location? = null
-        val cancel = CancellationSignal()
-        val direct = Executor { it.run() }
-        lm.getCurrentLocation(provider, cancel, direct, java.util.function.Consumer<Location?> { loc ->
-            result = loc
-            latch.countDown()
-        })
-        if (!latch.await(timeoutMs, TimeUnit.MILLISECONDS)) runCatching { cancel.cancel() }
-        return result
     }
 }

@@ -5,6 +5,7 @@ import android.app.ActivityManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.PowerManager
 import android.content.IntentFilter
 import android.graphics.Color
 import android.content.res.ColorStateList
@@ -104,6 +105,7 @@ class MainActivity : Activity() {
         }
         render()
         ensureLockTask()
+        askBatteryExemption()
         maybeAutoLaunch()
     }
 
@@ -795,5 +797,21 @@ class MainActivity : Activity() {
             val time = if (at > 0) " · " + DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(at)) else ""
             String.format(java.util.Locale.US, "%.5f, %.5f", o.optDouble("lat"), o.optDouble("lon")) + time
         }.getOrDefault("-")
+    }
+
+    /**
+     * Deep sleep (Doze) pauses the live connection, so a command or Locate could wait minutes for the next maintenance
+     * window. The USB setup whitelists the app; otherwise the system "let app run in background" dialog is shown at
+     * most once a day until it is accepted.
+     */
+    private fun askBatteryExemption() {
+        runCatching {
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            if (pm.isIgnoringBatteryOptimizations(packageName)) return
+            val p = Prefs(this)
+            if (System.currentTimeMillis() - p.lastBatteryAsk < 24 * 60 * 60_000L) return
+            p.lastBatteryAsk = System.currentTimeMillis()
+            startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
+        }
     }
 }
