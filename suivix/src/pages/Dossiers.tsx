@@ -9,17 +9,26 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table'
-import { ArrowUpDown, CalendarDays, FolderOpen, ListChecks, Paperclip, Plus, Search, X } from 'lucide-react'
+import { ArrowUpDown, FolderOpen, ListChecks, Paperclip, Plus, Search, X } from 'lucide-react'
 import { Button } from '../lib/shadcn/button'
 import { Input } from '../lib/shadcn/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../lib/shadcn/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../lib/shadcn/table'
 import { useSuivix } from '../lib/suivix/context'
-import { canCreateDossier, canManageDossiers, formatDate, openTasksCount, STATUS_CONFIG, visibleDossiersFor } from '../lib/suivix/utils'
+import { canCreateDossier, canManageDossiers, daysSince, formatDate, openTasksCount, STATUS_CONFIG, visibleDossiersFor } from '../lib/suivix/utils'
 import type { Dossier, DossierStatus } from '../lib/suivix/types'
 import { PriorityBadge, StatusBadge, MemberAvatar } from '../components/suivix/Badges'
 import { PageHeader, EmptyState } from '../components/suivix/PageHeader'
 import { useShell } from '../components/suivix/Layout'
+
+// Registration-date filter as fixed periods: a native date input shows the browser's locale format.
+const PERIODS: { value: string; label: string; days: number | null }[] = [
+  { value: 'all', label: 'Toutes les dates', days: null },
+  { value: '1', label: "Reçus aujourd'hui", days: 1 },
+  { value: '7', label: 'Reçus sur 7 jours', days: 7 },
+  { value: '30', label: 'Reçus sur 30 jours', days: 30 },
+  { value: '90', label: 'Reçus sur 90 jours', days: 90 },
+]
 
 export default function Dossiers() {
   const { state, currentMember } = useSuivix()
@@ -29,7 +38,7 @@ export default function Dossiers() {
   const [search, setSearch] = useState(params.get('q') ?? '')
   const [statusFilter, setStatusFilter] = useState<string>(params.get('statut') ?? 'all')
   const [agentFilter, setAgentFilter] = useState<string>(params.get('detenteur') ?? 'all')
-  const [dateFrom, setDateFrom] = useState('')
+  const [period, setPeriod] = useState('all')
   const [sorting, setSorting] = useState<SortingState>([{ id: 'updatedAt', desc: true }])
   const canCreate = canCreateDossier(currentMember.role)
   const canFilterByAgent = canManageDossiers(currentMember.role) || currentMember.role === 'secretariat'
@@ -44,7 +53,8 @@ export default function Dossiers() {
     const filtered = baseDossiers.filter((d) => {
       if (statusFilter !== 'all' && (statusFilter === 'non_affecte' ? d.agentId : d.status !== statusFilter)) return false
       if (agentFilter !== 'all' && d.agentId !== agentFilter) return false
-      if (dateFrom && new Date(d.createdAt) < new Date(dateFrom)) return false
+      const days = PERIODS.find((p) => p.value === period)?.days
+      if (days != null && daysSince(d.createdAt) >= days) return false
       if (!q) return true
       const own = `${d.reference} ${d.title} ${d.client} ${d.description} ${d.tags.join(' ')}`.toLowerCase()
       if (own.includes(q)) return true
@@ -59,7 +69,7 @@ export default function Dossiers() {
       return false
     })
     return { filtered, matchedIn }
-  }, [baseDossiers, statusFilter, agentFilter, dateFrom, q, state.attachments, state.tasks])
+  }, [baseDossiers, statusFilter, agentFilter, period, q, state.attachments, state.tasks])
 
   function agentName(id: string | null) {
     if (!id) return null
@@ -209,18 +219,19 @@ export default function Dossiers() {
             </SelectContent>
           </Select>
         )}
-        <div className="relative">
-          <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="date"
-            className="w-44 pl-9"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            title="Enregistrés depuis le"
-            aria-label="Enregistrés depuis le"
-          />
-        </div>
-        {(search || statusFilter !== 'all' || agentFilter !== 'all' || dateFrom) && (
+        <Select value={period} onValueChange={setPeriod}>
+          <SelectTrigger className="w-48" aria-label="Date d'enregistrement">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {PERIODS.map((p) => (
+              <SelectItem key={p.value} value={p.value}>
+                {p.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {(search || statusFilter !== 'all' || agentFilter !== 'all' || period !== 'all') && (
           <Button
             variant="ghost"
             size="sm"
@@ -228,7 +239,7 @@ export default function Dossiers() {
               setSearch('')
               setStatusFilter('all')
               setAgentFilter('all')
-              setDateFrom('')
+              setPeriod('all')
             }}
           >
             <X className="h-4 w-4" />
@@ -237,7 +248,55 @@ export default function Dossiers() {
         )}
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-border bg-card shadow-retool-sm">
+      {/* Phones: one card per dossier instead of a table that scrolls sideways. */}
+      <ul className="space-y-density-sm md:hidden">
+        {table.getRowModel().rows.length === 0 ? (
+          <li className="rounded-lg border border-border bg-card">
+            <EmptyState icon={<FolderOpen className="h-5 w-5" />} title="Aucun dossier ne correspond" description="Modifiez la recherche ou les filtres pour élargir les résultats." />
+          </li>
+        ) : (
+          table.getRowModel().rows.map(({ original: d }) => {
+            const agent = agentName(d.agentId)
+            const hit = matchedIn.get(d.id)
+            return (
+              <li key={d.id}>
+                <button
+                  onClick={() => navigate(`/dossiers/${d.id}`)}
+                  className="block w-full rounded-lg border border-border bg-card p-density-md text-left shadow-retool-sm transition-colors hover:border-primary/40"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="ref text-[0.7rem] text-muted-foreground">{d.reference}</span>
+                    <StatusBadge status={d.status} />
+                  </div>
+                  <p className="mt-1.5 font-medium leading-snug">{d.title}</p>
+                  <p className="text-xs text-muted-foreground">{d.client}</p>
+                  {hit && (
+                    <p className="mt-1 inline-flex items-center gap-1 rounded bg-secondary px-1.5 py-0.5 text-[0.7rem] text-primary">
+                      {hit === 'tâche' ? <ListChecks className="h-3 w-3" /> : <Paperclip className="h-3 w-3" />}
+                      Trouvé dans une {hit}
+                    </p>
+                  )}
+                  <div className="mt-2.5 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      {agent ? (
+                        <>
+                          <MemberAvatar name={agent.name} color={agent.color} size="sm" />
+                          <span className="truncate">{agent.name}</span>
+                        </>
+                      ) : (
+                        'Non affecté'
+                      )}
+                    </span>
+                    <PriorityBadge priority={d.priority} />
+                  </div>
+                </button>
+              </li>
+            )
+          })
+        )}
+      </ul>
+
+      <div className="hidden overflow-hidden rounded-lg border border-border bg-card shadow-retool-sm md:block">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((hg) => (

@@ -90,6 +90,8 @@ export default function DossierDetail() {
   }
 
   const canEdit = canManageDossiers(currentMember.role) || dossier.agentId === currentMember.id
+  // The secrétariat registers dossiers, so it can correct their details — but not drive their processing.
+  const canEditInfo = canEdit || currentMember.role === 'secretariat'
   const canDelete = canDeleteDossier(currentMember.role)
   // Closed dossiers no longer circulate, so they can't be pointed.
   const canPoint = dossier.status !== 'termine'
@@ -149,7 +151,7 @@ export default function DossierDetail() {
               <ArrowRightLeft className="h-4 w-4" /> Pointer un transfert
             </Button>
           )}
-          {canEdit && (
+          {canEditInfo && (
             <Button variant="outline" onClick={() => setEditOpen(true)}>
               <Pencil className="h-4 w-4" /> Modifier
             </Button>

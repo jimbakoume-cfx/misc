@@ -83,7 +83,8 @@ export function SuivixLayout({ children }: { children: ReactNode }) {
   const canPoint = true
   const visible = visibleDossiersFor(currentMember, state.dossiers)
   const activeCount = visible.filter((d) => d.status !== 'termine').length
-  const alertCount = computeAlerts(visible).filter((a) => a.severity === 'critical').length
+  // Count dossiers needing attention, not individual alerts: one late, idle, blocked dossier is one item.
+  const alertCount = new Set(computeAlerts(visible).filter((a) => a.severity === 'critical').map((a) => a.dossierId)).size
 
   useEffect(() => setDrawerOpen(false), [location.pathname])
 
@@ -119,7 +120,7 @@ export function SuivixLayout({ children }: { children: ReactNode }) {
     {
       label: 'Pilotage',
       items: [
-        { to: '/agents', label: 'Vue par agent', icon: <Users className="h-4 w-4" />, show: canViewDashboards(currentMember.role) },
+        { to: '/agents', label: 'Vue par détenteur', icon: <Users className="h-4 w-4" />, show: canViewDashboards(currentMember.role) },
         { to: '/kpi', label: 'KPI & Scorecards', icon: <Gauge className="h-4 w-4" />, show: canViewKpi(currentMember.role) },
         { to: '/audit', label: "Journal d'audit", icon: <ScrollText className="h-4 w-4" />, show: canViewAuditLog(currentMember.role) },
       ],
@@ -192,6 +193,7 @@ export function SuivixLayout({ children }: { children: ReactNode }) {
           <span className="min-w-0 flex-1">
             <span className="block truncate text-[0.8rem] font-medium">{currentMember.name}</span>
             <span className="block truncate text-[0.7rem] text-white/50">{ROLE_CONFIG[currentMember.role].label}</span>
+            <span className="mt-0.5 block font-mono text-[0.6rem] uppercase tracking-wider text-primary/90">Démo · changer de profil</span>
           </span>
           <ChevronsUpDown className="h-4 w-4 shrink-0 text-white/40" />
         </button>

@@ -17,7 +17,7 @@ export default function AgentsView() {
 
   return (
     <div className="space-y-density-lg">
-      <PageHeader eyebrow="Pilotage" title="État des dossiers par agent" subtitle="Charge de travail et avancement de chaque membre de l'équipe." />
+      <PageHeader eyebrow="Pilotage" title="État des dossiers par détenteur" subtitle="Charge de travail et avancement de chaque détenteur — cliquez sur une carte pour voir ses dossiers." />
 
       {unassigned > 0 && (
         <Card className="border-warning/40 bg-warning/10">
@@ -29,7 +29,7 @@ export default function AgentsView() {
 
       <div className="grid grid-cols-1 gap-density-lg md:grid-cols-2 lg:grid-cols-3">
         {scorecards.map((sc) => (
-          <Card key={sc.member.id} className="cursor-pointer transition-shadow hover:shadow-retool-md" onClick={() => navigate('/dossiers')}>
+          <Card key={sc.member.id} className="cursor-pointer transition-shadow hover:shadow-retool-md" onClick={() => navigate(`/dossiers?detenteur=${sc.member.id}`)}>
             <CardContent className="p-density-lg space-y-density-md">
               <div className="flex items-center gap-density-sm">
                 <MemberAvatar name={sc.member.name} color={sc.member.color} size="lg" />
@@ -70,11 +70,11 @@ export default function AgentsView() {
 
       <Card>
         <CardContent className="p-density-lg">
-          <h2 className="mb-density-md text-sm font-semibold">Détail par agent</h2>
+          <h2 className="mb-density-md text-sm font-semibold">Détail par détenteur</h2>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Agent</TableHead>
+                <TableHead>Détenteur</TableHead>
                 <TableHead>Total</TableHead>
                 <TableHead>En cours</TableHead>
                 <TableHead>Bloqués</TableHead>

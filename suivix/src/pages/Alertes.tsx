@@ -35,6 +35,7 @@ export default function Alertes() {
   const visible = useMemo(() => visibleDossiersFor(currentMember, state.dossiers), [currentMember, state.dossiers])
   const alerts = useMemo(() => computeAlerts(visible), [visible])
   const filtered = typeFilter === 'all' ? alerts : alerts.filter((a) => a.type === typeFilter)
+  const dossierCount = new Set(alerts.map((a) => a.dossierId)).size
 
   function dossierRef(id: string) {
     return state.dossiers.find((d) => d.id === id)
@@ -43,7 +44,7 @@ export default function Alertes() {
   return (
     <div className="space-y-density-lg">
       <div className="flex flex-col gap-density-md sm:flex-row sm:items-end sm:justify-between">
-        <PageHeader eyebrow="Espace de travail" title="Alertes" subtitle={<>{alerts.length} alerte{alerts.length === 1 ? '' : 's'} active{alerts.length === 1 ? '' : 's'}</>} />
+        <PageHeader eyebrow="Espace de travail" title="Alertes" subtitle={<>{alerts.length} alerte{alerts.length === 1 ? '' : 's'} active{alerts.length === 1 ? '' : 's'} sur {dossierCount} dossier{dossierCount === 1 ? '' : 's'}</>} />
         <Select value={typeFilter} onValueChange={setTypeFilter}>
           <SelectTrigger className="w-56">
             <SelectValue placeholder="Type d'alerte" />
