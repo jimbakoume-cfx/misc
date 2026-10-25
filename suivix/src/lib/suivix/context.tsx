@@ -9,10 +9,12 @@ import type {
   Company,
   Dossier,
   DossierStatus,
+  Handover,
   HistoryEventType,
   KpiDefinition,
   Member,
   Priority,
+  RequiredPiece,
   Role,
   SuivixRoot,
   SuivixState,
@@ -44,7 +46,7 @@ function buildSeedRoot(): SuivixRoot {
   }
 }
 
-const EMPTY_STATE: SuivixState = { members: [], dossiers: [], history: [], attachments: [], tasks: [], kpiDefinitions: [], notifications: [] }
+const EMPTY_STATE: SuivixState = { members: [], dossiers: [], history: [], attachments: [], tasks: [], kpiDefinitions: [], notifications: [], handovers: [] }
 
 interface NewDossierInput {
   title: string
@@ -55,6 +57,8 @@ interface NewDossierInput {
   dueDate: string | null
   tags: string[]
   clientEmail?: string | null
+  typeId?: string | null
+  pieces?: RequiredPiece[]
 }
 
 export interface ImportRow {
@@ -108,15 +112,17 @@ interface SuivixContextValue {
   setPhysicalLocation: (dossierId: string, location: string, authorId: string) => void
   markNotificationRead: (id: string) => void
   markAllNotificationsRead: () => void
+  togglePiece: (dossierId: string, index: number, authorId: string) => void
+  recordReminder: (dossierId: string, missing: string[], authorId: string) => void
+  recordHandover: (input: Omit<Handover, 'id' | 'date'>) => Handover
   resetDemoData: () => void
 }
 
 const SuivixContext = createContext<SuivixContextValue | null>(null)
 
 export function SuivixProvider({ children }: { children: ReactNode }) {
-  // Bumped to v5: sign-in, company profile and Cameroonian demo data — old cached sessions
-  // must not load into it.
-  const [root, setRoot] = useLocalStorageState<SuivixRoot>('root_v6', buildSeedRoot)
+  // Bumped to v7: required pieces and handovers (décharges) — old cached sessions must not load into it.
+  const [root, setRoot] = useLocalStorageState<SuivixRoot>('root_v7', buildSeedRoot)
 
   const currentCompanyId = root.currentCompanyId
   const state = root.dataByCompany[currentCompanyId] ?? EMPTY_STATE
@@ -266,6 +272,8 @@ export function SuivixProvider({ children }: { children: ReactNode }) {
           blockReason: null,
           physicalLocation: null,
           clientEmail: input.clientEmail ?? null,
+          typeId: input.typeId ?? null,
+          pieces: input.pieces ?? [],
         }
         updateCompanyState((prev) => ({ ...prev, dossiers: [...prev.dossiers, dossier] }))
         pushHistory(id, 'creation', 'Dossier créé', authorId)
@@ -328,6 +336,7 @@ export function SuivixProvider({ children }: { children: ReactNode }) {
           history: prev.history.filter((h) => h.dossierId !== id),
           attachments: prev.attachments.filter((a) => a.dossierId !== id),
           tasks: prev.tasks.filter((t) => t.dossierId !== id),
+          handovers: prev.handovers.filter((h) => h.dossierId !== id),
         }))
       },
 
@@ -438,6 +447,28 @@ export function SuivixProvider({ children }: { children: ReactNode }) {
 
       markAllNotificationsRead: () => {
         updateCompanyState((prev) => ({ ...prev, notifications: prev.notifications.map((n) => ({ ...n, read: true })) }))
+      },
+
+      togglePiece: (dossierId, index, authorId) => {
+        const piece = state.dossiers.find((d) => d.id === dossierId)?.pieces?.[index]
+        if (!piece) return
+        updateCompanyState((prev) => ({
+          ...prev,
+          dossiers: prev.dossiers.map((d) =>
+            d.id === dossierId ? { ...d, updatedAt: nowIso(), pieces: (d.pieces ?? []).map((p, i) => (i === index ? { ...p, received: !p.received } : p)) } : d
+          ),
+        }))
+        pushHistory(dossierId, 'update', piece.received ? `Pièce marquée manquante : ${piece.name}` : `Pièce reçue : ${piece.name}`, authorId)
+      },
+
+      recordReminder: (dossierId, missing, authorId) => {
+        pushHistory(dossierId, 'update', `Relance envoyée au client — ${missing.length} pièce${missing.length > 1 ? 's' : ''} manquante${missing.length > 1 ? 's' : ''}`, authorId)
+      },
+
+      recordHandover: (input) => {
+        const handover: Handover = { ...input, id: nowId('ho'), date: nowIso() }
+        updateCompanyState((prev) => ({ ...prev, handovers: [...prev.handovers, handover] }))
+        return handover
       },
 
       resetDemoData: () => {

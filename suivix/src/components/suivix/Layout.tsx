@@ -6,7 +6,10 @@ import {
   IconSelector as ChevronsUpDown,
   IconFolders as FolderKanban,
   IconFolderPlus as FolderPlus,
+  IconFileAlert as FileAlert,
+  IconHelpCircle as HelpCircle,
   IconLayoutDashboard as LayoutDashboard,
+  IconSignature as Signature,
   IconLogout as LogOut,
   IconMenu2 as Menu,
   IconSearch as Search,
@@ -21,6 +24,8 @@ import {
   companySettings,
   computeAlerts,
   initials,
+  mailtoLink,
+  missingPieces,
   PLAN_LABELS,
   ROLE_CONFIG,
   visibleDossiersFor,
@@ -79,6 +84,7 @@ export function SuivixLayout({ children }: { children: ReactNode }) {
   const visible = visibleDossiersFor(currentMember, state.dossiers)
   const activeCount = visible.filter((d) => d.status !== 'termine').length
   // Count dossiers needing attention, not individual alerts: one late, idle, blocked dossier is one item.
+  const toRemind = visible.filter((d) => d.status !== 'termine' && missingPieces(d).length > 0).length
   const alertCount = new Set(computeAlerts(visible, companySettings(currentCompany)).filter((a) => a.severity === 'critical').map((a) => a.dossierId)).size
 
   useEffect(() => setDrawerOpen(false), [location.pathname])
@@ -110,6 +116,13 @@ export function SuivixLayout({ children }: { children: ReactNode }) {
         { to: '/', label: 'Tableau de bord', icon: <LayoutDashboard className="h-4 w-4" />, show: true },
         { to: '/dossiers', label: 'Dossiers', icon: <FolderKanban className="h-4 w-4" />, show: true, count: activeCount },
         { to: '/alertes', label: 'Alertes', icon: <BellRing className="h-4 w-4" />, show: true, count: alertCount },
+      ],
+    },
+    {
+      label: 'Suivi',
+      items: [
+        { to: '/relances', label: 'Pièces à relancer', icon: <FileAlert className="h-4 w-4" />, show: true, count: toRemind },
+        { to: '/transmissions', label: 'Transmissions', icon: <Signature className="h-4 w-4" />, show: true },
       ],
     },
     {
@@ -169,6 +182,24 @@ export function SuivixLayout({ children }: { children: ReactNode }) {
           )
         })}
       </nav>
+
+      <div className="space-y-2 px-3 pb-3">
+        <Link
+          to="/parametres?section=offre"
+          className="block rounded-md border border-white/10 bg-white/[0.04] px-3 py-2.5 transition-colors hover:bg-white/[0.08]"
+        >
+          <span className="eyebrow block text-[0.6rem] text-primary">{PLAN_LABELS[currentCompany.plan]}</span>
+          <span className="mt-0.5 block truncate text-[0.75rem] text-white/60">
+            {state.members.filter((m) => m.status === 'actif').length} utilisateurs · {activeCount} dossiers actifs
+          </span>
+        </Link>
+        <a
+          href={mailtoLink('support@suivix.co', `Aide — ${currentCompany.name}`, '')}
+          className="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[0.8rem] text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white"
+        >
+          <HelpCircle className="h-4 w-4" /> Aide et formation
+        </a>
+      </div>
 
       <div className="border-t border-white/10 p-3">
         <DropdownMenu>
@@ -291,6 +322,8 @@ export function SuivixLayout({ children }: { children: ReactNode }) {
                 dueDate: values.dueDate,
                 tags: parseTagsInput(values.tags),
                 clientEmail: values.clientEmail.trim() || null,
+                typeId: values.typeId,
+                pieces: values.pieces,
               },
               currentMember.id
             )

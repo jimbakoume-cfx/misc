@@ -1,6 +1,7 @@
 import type {
   AppNotification,
   Attachment,
+  Handover,
   Company,
   Dossier,
   DossierStatus,
@@ -14,6 +15,17 @@ import type {
   SuivixState,
 } from './types'
 import { craftAssignmentMessage } from './notifications'
+import { DEFAULT_DOSSIER_TYPES } from './utils'
+
+// Seed titles that belong to one of the starter dossier types (and so carry required pieces).
+const TITLE_TYPES: Record<string, string> = {
+  "Renouvellement d'agrément": 'agrement',
+  "Demande d'autorisation d'urbanisme": 'agrement',
+  "Dossier d'appel d'offres": 'appel-offres',
+  "Demande d'exonération fiscale": 'fiscal',
+  'Contentieux fournisseur': 'contentieux',
+  'Litige commercial': 'contentieux',
+}
 
 const STATUS_LABELS: Record<DossierStatus, string> = {
   nouveau: 'Nouveau',
@@ -206,6 +218,8 @@ export function buildSeedState(config: CompanySeedConfig, companyId: string): Su
   const attachments: Attachment[] = []
   const tasks: SuivixState['tasks'] = []
   const notifications: AppNotification[] = []
+  const handovers: Handover[] = []
+  const registrar = members.find((m) => m.role === 'secretariat' && m.status === 'actif') ?? null
 
   for (let i = 0; i < config.dossierCount; i++) {
     const status = pickStatus()
@@ -240,6 +254,13 @@ export function buildSeedState(config: CompanySeedConfig, companyId: string): Su
       blockReason: status === 'bloque' ? pick(BLOCK_REASONS) : null,
       physicalLocation: rand() > 0.15 ? pick(PHYSICAL_LOCATIONS) : null,
     }
+    const type = DEFAULT_DOSSIER_TYPES.find((t) => t.id === TITLE_TYPES[dossier.title])
+    if (type) {
+      dossier.typeId = type.id
+      dossier.pieces = type.pieces.map((name) => ({ name, received: status === 'termine' || rand() > (status === 'en_attente' || status === 'nouveau' ? 0.55 : 0.1) }))
+      // A dossier waiting on the client is always missing at least one piece.
+      if (status === 'en_attente' && dossier.pieces.every((p) => p.received)) dossier.pieces[dossier.pieces.length - 1]!.received = false
+    }
     dossiers.push(dossier)
 
     history.push({
@@ -258,6 +279,17 @@ export function buildSeedState(config: CompanySeedConfig, companyId: string): Su
         type: 'assignment',
         description: `Dossier affecté à ${assignedAgent.name}`,
         authorId: pick(members.filter((m) => m.role !== 'collaborateur')).id,
+      })
+      handovers.push({
+        id: nextId('ho'),
+        dossierId,
+        fromId: registrar?.id ?? null,
+        toId: assignedAgent.id,
+        date: isoDaysFromNow(-createdDaysAgo + 1 > 0 ? -createdDaysAgo + 1 : -createdDaysAgo),
+        location: dossier.physicalLocation,
+        note: null,
+        signature: null,
+        recordedBy: registrar?.id ?? assignedAgent.id,
       })
       if (rand() > 0.5) {
         notifications.push({
@@ -347,7 +379,7 @@ export function buildSeedState(config: CompanySeedConfig, companyId: string): Su
     { id: nextId('kpi'), name: 'Délai moyen de traitement', metric: 'delai_moyen', period: '90j', weight: 30, createdAt: isoDaysFromNow(-60) },
   ]
 
-  return { members, dossiers, history, attachments, tasks, kpiDefinitions, notifications }
+  return { members, dossiers, history, attachments, tasks, kpiDefinitions, notifications, handovers }
 }
 
 export interface SeededCompany {

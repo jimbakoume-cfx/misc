@@ -4,15 +4,17 @@ import { Button } from '../../lib/shadcn/button'
 import { useSuivix } from '../../lib/suivix/context'
 import { craftReceiptMessage } from '../../lib/suivix/notifications'
 import type { Dossier } from '../../lib/suivix/types'
-import { formatDate, formatDateTime, mailtoLink } from '../../lib/suivix/utils'
-import { QrCodeTag } from './QrCodeTag'
+import { formatDate, formatDateTime, mailtoLink, missingPieces } from '../../lib/suivix/utils'
+import { dossierTrackingUrl, QrCodeTag } from './QrCodeTag'
 import { SuivixLogo } from './Logo'
 
 // Accusé de réception handed to whoever deposited the dossier: printed, or sent by email.
 export function ReceiptDialog({ dossier, open, onOpenChange }: { dossier: Dossier | null; open: boolean; onOpenChange: (open: boolean) => void }) {
   const { currentCompany } = useSuivix()
   if (!dossier) return null
-  const message = craftReceiptMessage(currentCompany.name, dossier.reference, dossier.title, formatDate(dossier.createdAt))
+  const trackingUrl = dossierTrackingUrl(dossier.reference)
+  const missing = missingPieces(dossier)
+  const message = craftReceiptMessage(currentCompany.name, dossier.reference, dossier.title, formatDate(dossier.createdAt), trackingUrl, missing)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -54,8 +56,21 @@ export function ReceiptDialog({ dossier, open, onOpenChange }: { dossier: Dossie
                   {formatDateTime(dossier.createdAt)}
                 </p>
               </div>
-              <QrCodeTag reference={dossier.reference} size={84} />
+              <div className="flex shrink-0 flex-col items-center gap-1">
+                <QrCodeTag reference={dossier.reference} url={trackingUrl} size={84} />
+                <span className="max-w-[7.5rem] text-center text-[0.6rem] leading-tight text-muted-foreground">Scannez pour suivre votre dossier</span>
+              </div>
             </div>
+            {missing.length > 0 && (
+              <div className="rounded border border-warning/30 bg-warning/5 px-3 py-2 text-sm">
+                <p className="mb-1 text-xs font-medium text-warning">Pièces à nous transmettre ({missing.length})</p>
+                <ul className="list-inside list-disc text-xs">
+                  {missing.map((p) => (
+                    <li key={p}>{p}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <div className="flex items-center justify-between border-t border-border pt-3 text-[0.65rem] text-muted-foreground">
               <span>Suivi assuré avec</span>
               <SuivixLogo size="sm" />

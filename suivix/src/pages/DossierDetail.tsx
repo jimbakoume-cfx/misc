@@ -12,6 +12,8 @@ import {
   IconPencil as Pencil,
   IconListCheck as ListChecks,
   IconHistory as History,
+  IconLink as LinkIcon,
+  IconSignature as Signature,
   IconQrcode as QrCode,
   IconReceipt as Receipt,
   IconTrash as Trash2,
@@ -50,6 +52,9 @@ import { HistoryTimeline } from '../components/suivix/HistoryTimeline'
 import { PhysicalTrackingPanel } from '../components/suivix/PhysicalTrackingPanel'
 import { TraceRail } from '../components/suivix/TraceRail'
 import { useShell } from '../components/suivix/Layout'
+import { PiecesCard } from '../components/suivix/PiecesCard'
+import { HandoversPanel } from '../components/suivix/HandoversPanel'
+import { dossierTrackingUrl } from '../components/suivix/QrCodeTag'
 import { exportDossierAsPdf } from '../lib/suivix/exportDoc'
 import { toast } from '../lib/shadcn/sonner'
 
@@ -101,6 +106,7 @@ export default function DossierDetail() {
   const dossierAttachments = state.attachments.filter((a) => a.dossierId === dossier.id)
   const dossierTasks = state.tasks.filter((t) => t.dossierId === dossier.id)
   const dossierHistory = state.history.filter((h) => h.dossierId === dossier.id)
+  const dossierHandovers = state.handovers.filter((h) => h.dossierId === dossier.id)
   const lastEvent = [...dossierHistory].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
   const lastAuthor = lastEvent?.authorId ? state.members.find((m) => m.id === lastEvent.authorId) : null
   const heldSince = [...dossierHistory]
@@ -162,6 +168,14 @@ export default function DossierDetail() {
               <DropdownMenuItem onSelect={() => setReceiptOpen(true)}>
                 <Receipt /> Accusé de réception
               </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => {
+                  navigator.clipboard?.writeText(dossierTrackingUrl(dossier.reference))
+                  toast.success('Lien de suivi copié — envoyez-le au déposant.')
+                }}
+              >
+                <LinkIcon /> Copier le lien de suivi client
+              </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => exportDossierAsPdf(dossier, state.history, state.attachments, state.tasks, state.members)}>
                 <FileDown /> Exporter en PDF
               </DropdownMenuItem>
@@ -214,6 +228,10 @@ export default function DossierDetail() {
               <TabsTrigger value="physical">
                 <QrCode className="h-4 w-4" /> Suivi physique
               </TabsTrigger>
+              <TabsTrigger value="handovers">
+                <Signature className="h-4 w-4" /> Décharges
+                <span className="rounded bg-muted px-1.5 font-mono text-[0.65rem]">{dossierHandovers.length}</span>
+              </TabsTrigger>
               <TabsTrigger value="history">
                 <History className="h-4 w-4" /> Historique
               </TabsTrigger>
@@ -265,6 +283,13 @@ export default function DossierDetail() {
                 </CardContent>
               </Card>
             </TabsContent>
+            <TabsContent value="handovers">
+              <Card>
+                <CardContent className="p-density-lg">
+                  <HandoversPanel handovers={dossierHandovers} />
+                </CardContent>
+              </Card>
+            </TabsContent>
             <TabsContent value="history">
               <Card>
                 <CardContent className="p-density-lg">
@@ -305,6 +330,8 @@ export default function DossierDetail() {
               )}
             </CardContent>
           </Card>
+
+          <PiecesCard dossier={dossier} canEdit={canEditInfo} />
 
           <Card>
             <CardContent className="space-y-density-sm p-density-lg">

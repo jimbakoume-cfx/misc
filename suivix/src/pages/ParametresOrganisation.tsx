@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { IconCheck as Check, IconDownload as Download, IconPhoto as Photo, IconTrash as Trash2 } from '@tabler/icons-react'
+import { IconCheck as Check, IconDownload as Download, IconPhoto as Photo, IconPlus as Plus, IconTrash as Trash2 } from '@tabler/icons-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../lib/shadcn/card'
 import { Badge } from '../lib/shadcn/badge'
 import { Button } from '../lib/shadcn/button'
 import { Input } from '../lib/shadcn/input'
+import { Textarea } from '../lib/shadcn/textarea'
 import { Progress } from '../lib/shadcn/progress'
 import {
   AlertDialog,
@@ -149,6 +150,47 @@ export function DossierRulesSection() {
             <Input id="r-due" type="number" min={0} max={30} value={v.dueSoonDays} onChange={(e) => setV({ ...v, dueSoonDays: Math.max(0, Number(e.target.value) || 0) })} />
           </Field>
         </div>
+        <div className="space-y-density-sm">
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium">Types de dossiers et pièces requises</p>
+              <p className="text-xs text-muted-foreground">Choisi à l'enregistrement : la liste des pièces apparaît sur l'accusé de réception et la page de suivi du client.</p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setV({ ...v, dossierTypes: [...v.dossierTypes, { id: `type-${Date.now().toString(36)}`, name: 'Nouveau type', pieces: [] }] })}
+            >
+              <Plus className="h-4 w-4" /> Ajouter un type
+            </Button>
+          </div>
+          {v.dossierTypes.map((t, i) => (
+            <div key={t.id} className="grid grid-cols-1 gap-2 rounded-md border border-border p-3 sm:grid-cols-[1fr_1.4fr_auto]">
+              <Input
+                aria-label="Nom du type"
+                value={t.name}
+                onChange={(e) => setV({ ...v, dossierTypes: v.dossierTypes.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })}
+              />
+              <Textarea
+                aria-label={`Pièces requises pour ${t.name}`}
+                rows={Math.max(3, t.pieces.length)}
+                className="text-sm"
+                placeholder="Une pièce par ligne"
+                value={t.pieces.join('\n')}
+                onChange={(e) => setV({ ...v, dossierTypes: v.dossierTypes.map((x, j) => (j === i ? { ...x, pieces: e.target.value.split('\n') } : x)) })}
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={`Supprimer le type ${t.name}`}
+                className="text-muted-foreground hover:text-destructive"
+                onClick={() => setV({ ...v, dossierTypes: v.dossierTypes.filter((_, j) => j !== i) })}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+        </div>
         <div className="rounded-md bg-muted/50 px-density-md py-density-sm text-sm">
           <p className="mb-1.5 text-xs font-medium text-muted-foreground">Statuts utilisés</p>
           <div className="flex flex-wrap gap-2">
@@ -167,7 +209,12 @@ export function DossierRulesSection() {
               toast.error('Préfixe invalide : 2 à 6 lettres majuscules ou chiffres.')
               return
             }
-            updateCompany({ settings: v })
+            // Blank lines and unnamed types are dropped; existing dossiers keep the pieces they were registered with.
+            const dossierTypes = v.dossierTypes
+              .map((t) => ({ ...t, name: t.name.trim(), pieces: t.pieces.map((p) => p.trim()).filter(Boolean) }))
+              .filter((t) => t.name)
+            updateCompany({ settings: { ...v, dossierTypes } })
+            setV({ ...v, dossierTypes })
             toast.success('Règles enregistrées — elles s’appliquent aux nouveaux dossiers et aux alertes.')
           }}
         />

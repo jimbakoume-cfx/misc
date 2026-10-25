@@ -44,6 +44,33 @@ export interface Dossier {
   blockReason: string | null
   physicalLocation: string | null // e.g. "Archives - Salle B - Étagère 4" (paper/digital bridge)
   clientEmail?: string | null // depositor's email, used to send the receipt
+  typeId?: string | null // dossier type, which sets the required pieces
+  pieces?: RequiredPiece[] // pieces the client must provide, copied from the type at registration
+}
+
+export interface RequiredPiece {
+  name: string
+  received: boolean
+}
+
+// A kind of dossier the company handles, with the pieces a client must provide for it.
+export interface DossierType {
+  id: string
+  name: string
+  pieces: string[]
+}
+
+// Décharge: proof that a dossier was handed from one person to another, optionally signed by the receiver.
+export interface Handover {
+  id: string
+  dossierId: string
+  fromId: string | null
+  toId: string
+  date: string // ISO date
+  location: string | null
+  note: string | null
+  signature: string | null // data URL of the receiver's signature
+  recordedBy: string
 }
 
 export type HistoryEventType =
@@ -124,6 +151,7 @@ export interface SuivixState {
   tasks: Task[]
   kpiDefinitions: KpiDefinition[]
   notifications: AppNotification[]
+  handovers: Handover[]
 }
 
 // ---------- Multi-tenant (SaaS) ----------
@@ -146,6 +174,7 @@ export interface CompanySettings {
   refPrefix: string // dossier references read <prefix>-<year>-<number>
   inactivityDays: number // a dossier with no movement for this long raises an alert
   dueSoonDays: number // warn this many days before a due date
+  dossierTypes: DossierType[]
 }
 
 export interface Company {

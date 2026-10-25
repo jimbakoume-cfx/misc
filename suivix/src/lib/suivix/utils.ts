@@ -3,6 +3,7 @@ import type {
   CompanySettings,
   Dossier,
   DossierStatus,
+  DossierType,
   Member,
   Plan,
   Priority,
@@ -176,7 +177,46 @@ export interface AlertItem {
   message: string
 }
 
-export const DEFAULT_SETTINGS: CompanySettings = { refPrefix: 'SVX', inactivityDays: 7, dueSoonDays: 3 }
+// Starter dossier types with the pieces usually asked for; each company edits its own list in Paramètres.
+export const DEFAULT_DOSSIER_TYPES: DossierType[] = [
+  {
+    id: 'agrement',
+    name: "Demande d'agrément ou d'autorisation",
+    pieces: ['Demande timbrée', 'Statuts certifiés conformes', 'Registre du commerce (RCCM)', 'Attestation de conformité fiscale', 'Plan de localisation'],
+  },
+  {
+    id: 'appel-offres',
+    name: "Dossier d'appel d'offres",
+    pieces: ['Soumission signée', 'Caution de soumission', 'Attestation de non-faillite', 'Attestation CNPS', 'Attestation de conformité fiscale', 'Offre financière'],
+  },
+  {
+    id: 'fiscal',
+    name: 'Dossier fiscal (patente, exonération)',
+    pieces: ['Demande adressée à l’administration fiscale', 'Copie de la carte de contribuable (NIU)', 'Derniers états financiers (DSF)', 'Quittances de paiement'],
+  },
+  {
+    id: 'contentieux',
+    name: 'Contentieux ou litige',
+    pieces: ['Exposé des faits', 'Contrat ou bon de commande', 'Correspondances échangées', 'Mise en demeure'],
+  },
+]
+
+export const DEFAULT_SETTINGS: CompanySettings = { refPrefix: 'SVX', inactivityDays: 7, dueSoonDays: 3, dossierTypes: DEFAULT_DOSSIER_TYPES }
+
+export function missingPieces(d: Dossier): string[] {
+  return (d.pieces ?? []).filter((p) => !p.received).map((p) => p.name)
+}
+
+// What the depositor sees on the public tracking page: plain steps, never internal notes or blocking reasons.
+export function clientProgress(d: Dossier): { step: 0 | 1 | 2; label: string; next: string } {
+  if (d.status === 'termine') return { step: 2, label: 'Traitement terminé', next: 'Votre dossier est traité. Contactez-nous pour le retrait des documents.' }
+  if (missingPieces(d).length > 0 && (d.status === 'en_attente' || d.status === 'bloque' || d.status === 'nouveau'))
+    return { step: 1, label: 'En attente de pièces', next: 'Merci de nous transmettre les pièces ci-dessous pour que le traitement continue.' }
+  if (d.status === 'nouveau') return { step: 0, label: 'Dossier reçu', next: 'Votre dossier va être confié à un responsable.' }
+  if (d.status === 'en_attente' || d.status === 'bloque')
+    return { step: 1, label: 'En attente', next: 'Votre dossier attend une validation ou une réponse extérieure. Nous vous tiendrons informé.' }
+  return { step: 1, label: 'En cours de traitement', next: 'Notre équipe traite votre dossier.' }
+}
 
 export function companySettings(company: Company): CompanySettings {
   return { ...DEFAULT_SETTINGS, ...company.settings }

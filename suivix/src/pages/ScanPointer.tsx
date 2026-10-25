@@ -12,7 +12,7 @@ import { useShell } from '../components/suivix/Layout'
 // Opened by scanning a dossier's QR label with any phone camera: the two-tap "pointer" screen.
 export default function ScanPointer() {
   const { reference = '' } = useParams<{ reference: string }>()
-  const { state, currentMember, assignDossier } = useSuivix()
+  const { state, currentMember, assignDossier, recordHandover } = useSuivix()
   const { openPointer } = useShell()
   const dossier = state.dossiers.find((d) => d.reference.toLowerCase() === reference.toLowerCase())
 
@@ -85,6 +85,7 @@ export default function ScanPointer() {
               className="h-14 text-base"
               onClick={() => {
                 assignDossier(dossier.id, currentMember.id, currentMember.id)
+                recordHandover({ dossierId: dossier.id, fromId: dossier.agentId, toId: currentMember.id, location: dossier.physicalLocation, note: null, signature: null, recordedBy: currentMember.id })
                 toast.success(`Pointé — vous détenez maintenant ${dossier.reference}.`)
               }}
             >

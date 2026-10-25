@@ -7,8 +7,9 @@ import { Textarea } from '../../lib/shadcn/textarea'
 import { Label } from '../../lib/shadcn/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../lib/shadcn/select'
 import { toast } from '../../lib/shadcn/sonner'
-import type { AttachmentType, Dossier, Member, Priority } from '../../lib/suivix/types'
-import { formatFileSize, isHolderRole } from '../../lib/suivix/utils'
+import { Checkbox } from '../../lib/shadcn/checkbox'
+import type { AttachmentType, Dossier, Member, Priority, RequiredPiece } from '../../lib/suivix/types'
+import { companySettings, formatFileSize, isHolderRole } from '../../lib/suivix/utils'
 import { useSuivix } from '../../lib/suivix/context'
 
 export interface PendingAttachment {
@@ -26,6 +27,8 @@ interface DossierFormValues {
   dueDate: string | null
   tags: string
   clientEmail: string
+  typeId: string | null
+  pieces: RequiredPiece[]
   attachments: PendingAttachment[]
 }
 
@@ -42,6 +45,8 @@ export function DossierFormDialog({
   dossier?: Dossier
   onSubmit: (values: DossierFormValues) => void
 }) {
+  const { currentCompany } = useSuivix()
+  const dossierTypes = companySettings(currentCompany).dossierTypes
   const [values, setValues] = useState<DossierFormValues>(emptyValues(dossier))
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -83,6 +88,53 @@ export function DossierFormDialog({
             <Label htmlFor="client">Entreprise / organisation</Label>
             <OrganisationPicker value={values.client} onChange={(client) => setValues((v) => ({ ...v, client }))} />
           </div>
+          {!dossier && dossierTypes.length > 0 && (
+            <div className="space-y-density-xs">
+              <Label>Type de dossier</Label>
+              <Select
+                value={values.typeId ?? 'none'}
+                onValueChange={(id) => {
+                  const type = dossierTypes.find((t) => t.id === id)
+                  setValues((v) => ({ ...v, typeId: type?.id ?? null, pieces: type ? type.pieces.map((name) => ({ name, received: false })) : [] }))
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Autre (sans liste de pièces)</SelectItem>
+                  {dossierTypes.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {values.pieces.length > 0 && (
+                <div className="rounded-md border border-border">
+                  <p className="flex items-center justify-between border-b border-border px-3 py-2 text-xs text-muted-foreground">
+                    <span>Cochez les pièces remises au dépôt</span>
+                    <span className="tabular-nums">
+                      {values.pieces.filter((p) => p.received).length} / {values.pieces.length}
+                    </span>
+                  </p>
+                  <ul className="divide-y divide-border">
+                    {values.pieces.map((p, i) => (
+                      <li key={p.name}>
+                        <label className="flex cursor-pointer items-center gap-2.5 px-3 py-1.5 text-sm">
+                          <Checkbox
+                            checked={p.received}
+                            onCheckedChange={(c) => setValues((v) => ({ ...v, pieces: v.pieces.map((x, j) => (j === i ? { ...x, received: c === true } : x)) }))}
+                          />
+                          {p.name}
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
           <div className="space-y-density-xs">
             <Label htmlFor="description">Description</Label>
             <Textarea id="description" value={values.description} onChange={(e) => setValues((v) => ({ ...v, description: e.target.value }))} placeholder="Détails du dossier" />
@@ -289,7 +341,7 @@ function OrganisationPicker({ value, onChange }: { value: string; onChange: (val
 
 function emptyValues(dossier?: Dossier): DossierFormValues {
   if (!dossier) {
-    return { title: '', client: '', description: '', priority: 'normale', agentId: null, dueDate: null, tags: '', clientEmail: '', attachments: [] }
+    return { title: '', client: '', description: '', priority: 'normale', agentId: null, dueDate: null, tags: '', clientEmail: '', typeId: null, pieces: [], attachments: [] }
   }
   return {
     title: dossier.title,
@@ -300,6 +352,8 @@ function emptyValues(dossier?: Dossier): DossierFormValues {
     dueDate: dossier.dueDate ? dossier.dueDate.slice(0, 10) : null,
     tags: dossier.tags.join(', '),
     clientEmail: dossier.clientEmail ?? '',
+    typeId: dossier.typeId ?? null,
+    pieces: dossier.pieces ?? [],
     attachments: [],
   }
 }

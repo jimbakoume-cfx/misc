@@ -16,6 +16,11 @@ export function craftStatusMessage(reference: string, statusLabel: string): stri
   return `Suivix : le dossier ${reference} est passé au statut "${statusLabel}".`
 }
 
-export function craftReceiptMessage(company: string, reference: string, title: string, date: string): string {
-  return `${company} — accusé de réception\nVotre dossier « ${title} » a été enregistré le ${date} sous la référence ${reference}.\nCitez cette référence pour tout suivi.`
+export function craftReceiptMessage(company: string, reference: string, title: string, date: string, trackingUrl: string, missing: string[] = []): string {
+  const pieces = missing.length ? `\n\nPièces à nous transmettre :\n${missing.map((p) => `- ${p}`).join('\n')}` : ''
+  return `${company} — accusé de réception\nVotre dossier « ${title} » a été enregistré le ${date} sous la référence ${reference}.\nSuivez son avancement à tout moment : ${trackingUrl}${pieces}`
+}
+
+export function craftReminderMessage(company: string, reference: string, title: string, missing: string[], trackingUrl: string): string {
+  return `Bonjour,\n\nPour poursuivre le traitement de votre dossier « ${title} » (référence ${reference}), il nous manque les pièces suivantes :\n${missing.map((p) => `- ${p}`).join('\n')}\n\nVous pouvez suivre votre dossier ici : ${trackingUrl}\n\nCordialement,\n${company}`
 }

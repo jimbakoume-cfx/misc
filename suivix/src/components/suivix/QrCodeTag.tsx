@@ -7,10 +7,15 @@ export function dossierScanUrl(reference: string): string {
   return `${window.location.origin}/p/${encodeURIComponent(reference)}`
 }
 
-export function QrCodeTag({ reference, size = 120 }: { reference: string; size?: number }) {
+// Public page where the depositor follows their dossier; printed on the accusé de réception.
+export function dossierTrackingUrl(reference: string): string {
+  return `${window.location.origin}/suivi/${encodeURIComponent(reference)}`
+}
+
+export function QrCodeTag({ reference, size = 120, url }: { reference: string; size?: number; url?: string }) {
   return (
     <div className="inline-flex flex-col items-center gap-density-sm rounded-md border border-border bg-white p-density-md">
-      <QRCodeSVG value={dossierScanUrl(reference)} size={size} bgColor="#ffffff" fgColor="#101828" level="M" />
+      <QRCodeSVG value={url ?? dossierScanUrl(reference)} size={size} bgColor="#ffffff" fgColor="#101828" level="M" />
       <span className="font-mono text-[10px] text-slate-600">{reference}</span>
     </div>
   )
