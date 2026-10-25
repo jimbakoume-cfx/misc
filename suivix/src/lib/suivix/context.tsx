@@ -125,7 +125,8 @@ export function SuivixProvider({ children }: { children: ReactNode }) {
   const [root, setRoot] = useLocalStorageState<SuivixRoot>('root_v7', buildSeedRoot)
 
   const currentCompanyId = root.currentCompanyId
-  const state = root.dataByCompany[currentCompanyId] ?? EMPTY_STATE
+  // Fill in lists that data saved by an older version may lack.
+  const state: SuivixState = { ...EMPTY_STATE, ...root.dataByCompany[currentCompanyId] }
 
   // Updates only the current company's data slice, leaving every other tenant untouched.
   function updateCompanyState(updater: (prev: SuivixState) => SuivixState) {

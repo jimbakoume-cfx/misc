@@ -5,6 +5,7 @@ import './appTheme.css'
 import { SuivixProvider, useSuivix } from './lib/suivix/context'
 import { SuivixLayout } from './components/suivix/Layout'
 import { Toaster } from './lib/shadcn/sonner'
+import { ErrorBoundary } from './components/suivix/ErrorBoundary'
 import Dossiers from './pages/Dossiers'
 import DossierDetail from './pages/DossierDetail'
 import Equipe from './pages/Equipe'
@@ -52,9 +53,11 @@ function Shell() {
 
 export default function App() {
   return (
-    <SuivixProvider>
-      <Shell />
-      <Toaster />
-    </SuivixProvider>
+    <ErrorBoundary>
+      <SuivixProvider>
+        <Shell />
+        <Toaster />
+      </SuivixProvider>
+    </ErrorBoundary>
   )
 }
