@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowRightLeft } from 'lucide-react'
+import { IconArrowsLeftRight as ArrowRightLeft } from '@tabler/icons-react'
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../lib/shadcn/dialog'
 import { Button } from '../../lib/shadcn/button'
 import { Input } from '../../lib/shadcn/input'
@@ -39,8 +39,10 @@ export function PointerDialog({ open, onOpenChange, dossierId }: { open: boolean
     if (holder !== dossier.agentId) assignDossier(dossier.id, holder, currentMember.id)
     if (location.trim()) setPhysicalLocation(dossier.id, location.trim(), currentMember.id)
     if (note.trim()) addComment(dossier.id, note.trim(), currentMember.id)
-    const name = state.members.find((m) => m.id === holder)?.name ?? ''
-    toast.success(`Transfert pointé — ${dossier.reference} est maintenant chez ${name}.`)
+    const receiver = state.members.find((m) => m.id === holder)
+    toast.success(`Transfert pointé — ${dossier.reference} est maintenant chez ${receiver?.name ?? ''}.`, {
+      description: receiver && receiver.id !== currentMember.id ? `${receiver.name} est prévenu(e) par email.` : undefined,
+    })
     onOpenChange(false)
   }
 

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FileText, MessageSquare, PlusCircle, RefreshCw, UserPlus, ClipboardList, Pencil, MapPin } from 'lucide-react'
+import { IconFileText as FileText, IconMessage as MessageSquare, IconCirclePlus as PlusCircle, IconRefresh as RefreshCw, IconUserPlus as UserPlus, IconClipboardList as ClipboardList, IconPencil as Pencil, IconMapPin as MapPin } from '@tabler/icons-react'
 import { Button } from '../../lib/shadcn/button'
 import { Textarea } from '../../lib/shadcn/textarea'
 import type { HistoryEntry, HistoryEventType, Member } from '../../lib/suivix/types'

@@ -7,7 +7,6 @@ export type Role = 'admin' | 'directeur' | 'chef_service' | 'collaborateur' | 's
 
 export type MemberStatus = 'actif' | 'en_attente'
 
-export type NotificationChannel = 'whatsapp' | 'sms' | 'email'
 
 export interface Member {
   id: string
@@ -17,9 +16,13 @@ export interface Member {
   role: Role
   status: MemberStatus
   color: string // tailwind color class suffix used for avatar background
-  notificationChannel: NotificationChannel
   createdAt: string // ISO date
+  avatar?: string | null // data URL of the profile photo
+  jobTitle?: string
+  notifyOn?: Partial<Record<NotifyEvent, boolean>>
 }
+
+export type NotifyEvent = 'assignment' | 'blocked' | 'due' | 'task'
 
 export type DossierStatus = 'nouveau' | 'en_cours' | 'en_attente' | 'bloque' | 'termine'
 
@@ -40,6 +43,7 @@ export interface Dossier {
   dueDate: string | null // ISO date
   blockReason: string | null
   physicalLocation: string | null // e.g. "Archives - Salle B - Étagère 4" (paper/digital bridge)
+  clientEmail?: string | null // depositor's email, used to send the receipt
 }
 
 export type HistoryEventType =
@@ -102,12 +106,11 @@ export interface KpiDefinition {
   createdAt: string
 }
 
-// Simulated multi-channel alert delivery (WhatsApp/SMS/Email) — see lib/suivix/notifications.ts
+// Simulated email alerts — see lib/suivix/notifications.ts
 export interface AppNotification {
   id: string
   memberId: string
   dossierId: string | null
-  channel: NotificationChannel
   message: string
   sentAt: string // ISO date
   read: boolean
@@ -127,12 +130,33 @@ export interface SuivixState {
 
 export type Plan = 'starter' | 'pro' | 'enterprise'
 
+export interface CompanyProfile {
+  legalName: string // raison sociale
+  sector: string
+  niu: string // numéro d'identifiant unique (contribuable)
+  rccm: string // registre du commerce
+  address: string
+  city: string
+  phone: string
+  email: string
+  website: string
+}
+
+export interface CompanySettings {
+  refPrefix: string // dossier references read <prefix>-<year>-<number>
+  inactivityDays: number // a dossier with no movement for this long raises an alert
+  dueSoonDays: number // warn this many days before a due date
+}
+
 export interface Company {
   id: string
   name: string
   slug: string
   plan: Plan
   createdAt: string // ISO date
+  logo?: string | null // data URL of the uploaded logo
+  profile?: Partial<CompanyProfile>
+  settings?: Partial<CompanySettings>
 }
 
 // Root shape persisted to localStorage: one isolated SuivixState per company
@@ -142,4 +166,5 @@ export interface SuivixRoot {
   currentCompanyId: string
   dataByCompany: Record<string, SuivixState>
   currentMemberIdByCompany: Record<string, string>
+  signedIn?: boolean // false/absent shows the welcome and sign-in screen
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowRight, CornerDownLeft, FileText, Search } from 'lucide-react'
+import { IconArrowRight as ArrowRight, IconCornerDownLeft as CornerDownLeft, IconFileText as FileText, IconSearch as Search } from '@tabler/icons-react'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { useSuivix } from '../../lib/suivix/context'
 import type { DossierStatus } from '../../lib/suivix/types'

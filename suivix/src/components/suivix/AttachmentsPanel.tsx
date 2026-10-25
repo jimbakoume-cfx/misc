@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import { FileText, File as FileIcon, ListChecks, Paperclip, Trash2, Upload } from 'lucide-react'
+import { IconFileText as FileText, IconFile as FileIcon, IconListCheck as ListChecks, IconPaperclip as Paperclip, IconTrash as Trash2, IconUpload as Upload } from '@tabler/icons-react'
 import { EmptyState } from './PageHeader'
 import { Button } from '../../lib/shadcn/button'
 import type { Attachment, Member, Task } from '../../lib/suivix/types'

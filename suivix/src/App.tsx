@@ -2,38 +2,43 @@
 
 import { Routes, Route, Navigate } from 'react-router-dom'
 import './appTheme.css'
-import { SuivixProvider } from './lib/suivix/context'
+import { SuivixProvider, useSuivix } from './lib/suivix/context'
 import { SuivixLayout } from './components/suivix/Layout'
 import { Toaster } from './lib/shadcn/sonner'
 import Dossiers from './pages/Dossiers'
 import DossierDetail from './pages/DossierDetail'
-import AgentsView from './pages/AgentsView'
 import Equipe from './pages/Equipe'
 import TableauDeBord from './pages/TableauDeBord'
 import Alertes from './pages/Alertes'
-import KPI from './pages/KPI'
-import AuditLog from './pages/AuditLog'
 import Parametres from './pages/Parametres'
+import Bienvenue from './pages/Bienvenue'
+import ScanPointer from './pages/ScanPointer'
+
+// Signed out: the welcome screen, whatever the URL — so a scanned /p/<reference> link resumes after sign-in.
+function Shell() {
+  const { signedIn } = useSuivix()
+  if (!signedIn) return <Bienvenue />
+  return (
+    <SuivixLayout>
+      <Routes>
+        <Route path="/" element={<TableauDeBord />} />
+        <Route path="/dossiers" element={<Dossiers />} />
+        <Route path="/dossiers/:id" element={<DossierDetail />} />
+        <Route path="/p/:reference" element={<ScanPointer />} />
+        <Route path="/alertes" element={<Alertes />} />
+        <Route path="/equipe" element={<Equipe />} />
+        <Route path="/parametres" element={<Parametres />} />
+        <Route path="/recherche" element={<Navigate to="/dossiers" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </SuivixLayout>
+  )
+}
 
 export default function App() {
   return (
     <SuivixProvider>
-      <SuivixLayout>
-        <Routes>
-          <Route path="/" element={<TableauDeBord />} />
-          <Route path="/dossiers" element={<Dossiers />} />
-          <Route path="/dossiers/:id" element={<DossierDetail />} />
-          <Route path="/agents" element={<AgentsView />} />
-          <Route path="/recherche" element={<Navigate to="/dossiers" replace />} />
-          <Route path="/alertes" element={<Alertes />} />
-          <Route path="/dashboards" element={<Navigate to="/" replace />} />
-          <Route path="/kpi" element={<KPI />} />
-          <Route path="/audit" element={<AuditLog />} />
-          <Route path="/equipe" element={<Equipe />} />
-          <Route path="/parametres" element={<Parametres />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </SuivixLayout>
+      <Shell />
       <Toaster />
     </SuivixProvider>
   )

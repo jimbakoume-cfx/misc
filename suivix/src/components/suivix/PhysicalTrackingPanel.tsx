@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { MapPin, Printer } from 'lucide-react'
+import { IconMapPin as MapPin, IconPrinter as Printer } from '@tabler/icons-react'
 import { Button } from '../../lib/shadcn/button'
 import { Input } from '../../lib/shadcn/input'
 import { QrCodeTag } from './QrCodeTag'
@@ -32,7 +32,9 @@ export function PhysicalTrackingPanel({
   return (
     <div className="grid grid-cols-1 gap-density-lg md:grid-cols-[auto_1fr]">
       <div className="flex flex-col items-center gap-density-sm">
-        <QrCodeTag reference={reference} />
+        <div className="print-area">
+          <QrCodeTag reference={reference} />
+        </div>
         <Button variant="outline" size="sm" onClick={() => window.print()}>
           <Printer className="h-4 w-4" /> Imprimer l'étiquette
         </Button>

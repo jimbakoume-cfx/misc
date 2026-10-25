@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, ChevronsUp, Minus } from 'lucide-react'
+import { IconChevronDown as ChevronDown, IconChevronUp as ChevronUp, IconChevronsUp as ChevronsUp, IconMinus as Minus } from '@tabler/icons-react'
 import { Badge } from '../../lib/shadcn/badge'
 import type { DossierStatus, Priority, Role } from '../../lib/suivix/types'
 import { AVATAR_COLOR_CLASSES, PRIORITY_CONFIG, ROLE_CONFIG, STATUS_CONFIG, initials } from '../../lib/suivix/utils'
@@ -44,8 +44,9 @@ export function RoleBadge({ role }: { role: Role }) {
   return <Badge variant={role === 'admin' ? 'default' : role === 'directeur' || role === 'chef_service' ? 'secondary' : 'outline'}>{ROLE_CONFIG[role].label}</Badge>
 }
 
-export function MemberAvatar({ name, color, size = 'md' }: { name: string; color: string; size?: 'sm' | 'md' | 'lg' }) {
-  const sizeClasses = size === 'sm' ? 'h-6 w-6 text-[10px]' : size === 'lg' ? 'h-11 w-11 text-sm' : 'h-8 w-8 text-xs'
+export function MemberAvatar({ name, color, src, size = 'md' }: { name: string; color: string; src?: string | null; size?: 'sm' | 'md' | 'lg' | 'xl' }) {
+  const sizeClasses = size === 'sm' ? 'h-6 w-6 text-[10px]' : size === 'lg' ? 'h-11 w-11 text-sm' : size === 'xl' ? 'h-20 w-20 text-xl' : 'h-8 w-8 text-xs'
+  if (src) return <img src={src} alt={name} className={`shrink-0 rounded-full object-cover ring-2 ring-card ${sizeClasses}`} />
   const colorClass = AVATAR_COLOR_CLASSES[color] ?? AVATAR_COLOR_CLASSES['blue']
   return (
     <div className={`flex shrink-0 items-center justify-center rounded-full font-semibold ring-2 ring-card ${sizeClasses} ${colorClass}`}>

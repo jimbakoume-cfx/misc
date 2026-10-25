@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Trash2, UserCheck } from 'lucide-react'
+import { IconPlus as Plus, IconTrash as Trash2, IconUserCheck as UserCheck } from '@tabler/icons-react'
 import { Button } from '../lib/shadcn/button'
 import { Input } from '../lib/shadcn/input'
 import { Label } from '../lib/shadcn/label'
@@ -83,10 +83,10 @@ export default function Equipe() {
                 <TableRow key={m.id}>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      <MemberAvatar name={m.name} color={m.color} size="sm" />
+                      <MemberAvatar name={m.name} color={m.color} src={m.avatar} size="md" />
                       <div>
                         <p className="font-medium">{m.name}</p>
-                        <p className="text-xs text-muted-foreground">{m.email}</p>
+                        <p className="text-xs text-muted-foreground">{[m.jobTitle, m.email].filter(Boolean).join(' · ')}</p>
                       </div>
                     </div>
                   </TableCell>

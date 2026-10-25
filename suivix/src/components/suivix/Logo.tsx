@@ -1,6 +1,6 @@
 // Wordmark per the Suivix brand guide: "suivi" in Sora SemiBold (ink), "x" in Sora Light
 // (Suivix blue) and a blue square as the full stop, sitting on the baseline. The tagline is
-// Source Serif 4 Italic preceded by a thin rule, and is never set directly against the logo.
+// set in the editorial italic, preceded by a thin rule, and is never set directly against the logo.
 export const SUIVIX_TAGLINE = 'Réception et suivi de dossier.'
 
 export function SuivixLogo({

@@ -1,14 +1,12 @@
 import { type ReactNode, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { AlertTriangle, ArrowRight, ArrowRightLeft, CalendarClock, CheckCircle2, FolderOpen, FolderPlus, Inbox, ListChecks, UserX } from 'lucide-react'
+import { IconAlertTriangle as AlertTriangle, IconArrowRight as ArrowRight, IconArrowsLeftRight as ArrowRightLeft, IconCalendarTime as CalendarClock, IconCircleCheck as CheckCircle2, IconFileSpreadsheet as FileSpreadsheet, IconFolderOpen as FolderOpen, IconFolderPlus as FolderPlus, IconInbox as Inbox, IconListCheck as ListChecks, IconPrinter as Printer, IconUserPlus as UserPlus, IconUserX as UserX } from '@tabler/icons-react'
 import { Card, CardContent, CardHeader, CardTitle } from '../lib/shadcn/card'
 import { Button } from '../lib/shadcn/button'
 import { Progress } from '../lib/shadcn/progress'
 import { useSuivix } from '../lib/suivix/context'
 import {
   computeAgentScorecard,
-  computeAlerts,
   daysBetween,
   daysSince,
   formatDate,
@@ -17,9 +15,10 @@ import {
   ROLE_CONFIG,
   STATUS_CONFIG,
   visibleDossiersFor,
+  canManageTeam,
 } from '../lib/suivix/utils'
-import type { Dossier, DossierStatus, HistoryEntry, Member } from '../lib/suivix/types'
-import { MemberAvatar, PriorityBadge, StatusBadge } from '../components/suivix/Badges'
+import type { Dossier, HistoryEntry, Member } from '../lib/suivix/types'
+import { MemberAvatar, StatusBadge } from '../components/suivix/Badges'
 import { EmptyState, PageHeader } from '../components/suivix/PageHeader'
 import { useShell } from '../components/suivix/Layout'
 
@@ -39,6 +38,7 @@ export default function TableauDeBord() {
       return (
         <div className="space-y-density-xl">
           {header("Vue d'ensemble de l'activité de l'organisation : volumes, blocages et charge de l'équipe.")}
+          {canManageTeam(currentMember.role) && <GettingStarted />}
           <DirectionDashboard dossiers={visible} />
         </div>
       )
@@ -74,9 +74,7 @@ function DirectionDashboard({ dossiers }: { dossiers: Dossier[] }) {
   const blocked = dossiers.filter((d) => d.status === 'bloque')
   const late = active.filter(isLate)
   const doneMonth = dossiers.filter((d) => d.status === 'termine' && daysSince(d.updatedAt) <= 30)
-  const statusData = STATUS_ORDER.map((s) => ({ name: STATUS_CONFIG[s].label, value: dossiers.filter((d) => d.status === s).length }))
   const holders = state.members.filter((m) => isHolderRole(m.role) && m.status === 'actif')
-  const loadData = holders.map((m) => ({ name: m.name.split(' ')[0], value: active.filter((d) => d.agentId === m.id).length }))
 
   return (
     <>
@@ -86,18 +84,15 @@ function DirectionDashboard({ dossiers }: { dossiers: Dossier[] }) {
         <StatTile label="Échéance dépassée" value={late.length} tone="warning" hint="À relancer" to="/alertes" />
         <StatTile label="Terminés (30 j)" value={doneMonth.length} tone="success" hint="Dossiers clôturés" to="/dossiers?statut=termine" />
       </StatGrid>
-      <div className="grid grid-cols-1 gap-density-xl lg:grid-cols-2">
-        <ChartCard title="Dossiers par statut" data={statusData} colored />
-        <ChartCard title="Charge actuelle par détenteur" data={loadData} />
-      </div>
       <div className="grid grid-cols-1 gap-density-xl lg:grid-cols-5">
+        <div className="lg:col-span-2">
+          <TeamLoad members={holders} />
+        </div>
         <div className="lg:col-span-3">
           <UnblockList dossiers={dossiers} />
         </div>
-        <div className="lg:col-span-2">
-          <ActivityFeed dossiers={dossiers} />
-        </div>
       </div>
+      <ActivityFeed dossiers={dossiers} />
     </>
   )
 }
@@ -119,33 +114,9 @@ function ServiceDashboard({ dossiers }: { dossiers: Dossier[] }) {
         <StatTile label="Échéance dépassée" value={late.length} tone="warning" hint="À relancer" to="/alertes" />
       </StatGrid>
       <div className="grid grid-cols-1 gap-density-xl lg:grid-cols-5">
-        <Card className="lg:col-span-2">
-          <CardHeader className="flex-row items-center justify-between">
-            <CardTitle>Charge de l'équipe</CardTitle>
-            <Link to="/agents" className="text-xs font-medium text-primary hover:underline">
-              Détails
-            </Link>
-          </CardHeader>
-          <CardContent className="space-y-density-md">
-            {team.map((m) => {
-              const sc = computeAgentScorecard(m, state.dossiers)
-              const open = sc.enCours + sc.bloque
-              return (
-                <Link key={m.id} to={`/dossiers?detenteur=${m.id}`} className="block rounded-md p-1.5 transition-colors hover:bg-muted/60">
-                  <div className="mb-1.5 flex items-center gap-2.5">
-                    <MemberAvatar name={m.name} color={m.color} size="sm" />
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium">{m.name}</span>
-                    <span className="font-mono text-xs text-muted-foreground">
-                      {open} actif{open > 1 ? 's' : ''}
-                      {sc.bloque > 0 && <span className="text-destructive"> · {sc.bloque} bloqué{sc.bloque > 1 ? 's' : ''}</span>}
-                    </span>
-                  </div>
-                  <Progress value={Math.min(100, open * 12.5)} className="h-1.5" />
-                </Link>
-              )
-            })}
-          </CardContent>
-        </Card>
+        <div className="lg:col-span-2">
+          <TeamLoad members={team} />
+        </div>
         <div className="lg:col-span-3">
           <UnblockList dossiers={dossiers} />
         </div>
@@ -285,8 +256,45 @@ function SecretariatDashboard({ dossiers }: { dossiers: Dossier[] }) {
 
 // ---------- Building blocks ----------
 
-const STATUS_ORDER: DossierStatus[] = ['nouveau', 'en_cours', 'en_attente', 'bloque', 'termine']
-const STATUS_COLORS = ['hsl(var(--chart-2))', 'hsl(var(--chart-1))', 'hsl(var(--warning))', 'hsl(var(--destructive))', 'hsl(var(--success))']
+// First steps for a new workspace; disappears once the team and the first dossiers are in.
+function GettingStarted() {
+  const { state } = useSuivix()
+  const { openNewDossier } = useShell()
+  const navigate = useNavigate()
+  const steps = [
+    { done: state.members.length > 1, icon: <UserPlus className="h-4 w-4" />, title: 'Invitez votre équipe', hint: 'Secrétariat, chefs de service, collaborateurs', run: () => navigate('/equipe') },
+    { done: state.dossiers.length > 0, icon: <FolderPlus className="h-4 w-4" />, title: 'Enregistrez un premier dossier', hint: 'Il reçoit sa référence SVX', run: openNewDossier },
+    { done: state.dossiers.length >= 10, icon: <FileSpreadsheet className="h-4 w-4" />, title: 'Importez vos dossiers en cours', hint: 'Depuis votre registre Excel', run: () => navigate('/dossiers') },
+    { done: false, icon: <Printer className="h-4 w-4" />, title: 'Imprimez les étiquettes QR', hint: 'Onglet « Suivi physique » de chaque dossier', run: () => navigate('/dossiers') },
+  ]
+  if (state.members.length > 1 && state.dossiers.length > 0) return null
+  const doneCount = steps.filter((s) => s.done).length
+  return (
+    <Card className="overflow-hidden border-primary/30">
+      <div className="flex items-center justify-between bg-primary px-density-lg py-3 text-primary-foreground">
+        <p className="font-semibold">Bien démarrer avec Suivix</p>
+        <span className="font-mono text-xs text-white/80">
+          {doneCount} / {steps.length}
+        </span>
+      </div>
+      <CardContent className="grid grid-cols-1 gap-2 p-density-lg sm:grid-cols-2 lg:grid-cols-4">
+        {steps.map((s) => (
+          <button
+            key={s.title}
+            onClick={s.run}
+            className={`flex items-start gap-3 rounded-md border p-3 text-left transition-colors hover:border-primary/40 ${s.done ? 'border-success/30 bg-success/5' : 'border-border'}`}
+          >
+            <span className={`mt-0.5 ${s.done ? 'text-success' : 'text-primary'}`}>{s.done ? <CheckCircle2 className="h-4 w-4" /> : s.icon}</span>
+            <span className="min-w-0">
+              <span className={`block text-sm font-medium ${s.done ? 'text-muted-foreground line-through' : ''}`}>{s.title}</span>
+              <span className="block text-xs text-muted-foreground">{s.hint}</span>
+            </span>
+          </button>
+        ))}
+      </CardContent>
+    </Card>
+  )
+}
 
 function isLate(d: Dossier): boolean {
   return d.status !== 'termine' && !!d.dueDate && daysBetween(new Date().toISOString(), d.dueDate) < 0
@@ -336,26 +344,36 @@ function QuickAction({ icon, title, description, onClick, primary }: { icon: Rea
   )
 }
 
-function ChartCard({ title, data, colored }: { title: string; data: { name: string; value: number }[]; colored?: boolean }) {
+// Each holder's open dossiers, linking to their filtered list.
+function TeamLoad({ members }: { members: Member[] }) {
+  const { state } = useSuivix()
   return (
-    <Card>
+    <Card className="h-full">
       <CardHeader>
-        <CardTitle>{title}</CardTitle>
+        <CardTitle>Charge de l'équipe</CardTitle>
       </CardHeader>
-      <CardContent>
-        <ResponsiveContainer width="100%" height={240}>
-          <BarChart data={data} margin={{ left: -20, right: 8, top: 8 }}>
-            <CartesianGrid vertical={false} stroke="hsl(var(--border))" />
-            <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} interval={0} />
-            <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />
-            <Tooltip cursor={{ fill: 'hsl(var(--muted))' }} contentStyle={{ borderRadius: 6, border: '1px solid hsl(var(--border))', fontSize: 12 }} />
-            <Bar dataKey="value" name="Dossiers" radius={[3, 3, 0, 0]} maxBarSize={44}>
-              {data.map((_, i) => (
-                <Cell key={i} fill={colored ? STATUS_COLORS[i % STATUS_COLORS.length] : 'hsl(var(--chart-1))'} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+      <CardContent className="space-y-density-md">
+        {members.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Invitez des collaborateurs pour leur confier des dossiers.</p>
+        ) : (
+          members.map((m) => {
+            const sc = computeAgentScorecard(m, state.dossiers)
+            const open = sc.enCours + sc.bloque
+            return (
+              <Link key={m.id} to={`/dossiers?detenteur=${m.id}`} className="block rounded-md p-1.5 transition-colors hover:bg-muted/60">
+                <div className="mb-1.5 flex items-center gap-2.5">
+                  <MemberAvatar name={m.name} color={m.color} size="sm" />
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium">{m.name}</span>
+                  <span className="font-mono text-xs text-muted-foreground">
+                    {open} actif{open > 1 ? 's' : ''}
+                    {sc.bloque > 0 && <span className="text-destructive"> · {sc.bloque} bloqué{sc.bloque > 1 ? 's' : ''}</span>}
+                  </span>
+                </div>
+                <Progress value={Math.min(100, open * 12.5)} className="h-1.5" />
+              </Link>
+            )
+          })
+        )}
       </CardContent>
     </Card>
   )
@@ -422,10 +440,7 @@ function AssignList({ dossiers, title }: { dossiers: Dossier[]; title: string })
                 <button className="min-w-0 flex-1 text-left" onClick={() => navigate(`/dossiers/${d.id}`)}>
                   <p className="ref text-[0.65rem] text-muted-foreground">{d.reference}</p>
                   <p className="truncate text-sm font-medium hover:text-primary">{d.title}</p>
-                  <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-                    <span className="truncate">{d.client}</span>
-                    <PriorityBadge priority={d.priority} />
-                  </div>
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">{d.client}</p>
                 </button>
                 <Button size="sm" variant="outline" onClick={() => openPointer(d.id)}>
                   <ArrowRightLeft className="h-3.5 w-3.5" /> Affecter

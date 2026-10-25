@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { File as FileIcon, FileText, ListChecks, Paperclip, Plus, Trash2, X } from 'lucide-react'
+import { IconFile as FileIcon, IconFileText as FileText, IconListCheck as ListChecks, IconPaperclip as Paperclip, IconPlus as Plus, IconTrash as Trash2, IconX as X } from '@tabler/icons-react'
 import { Button } from '../../lib/shadcn/button'
 import { Input } from '../../lib/shadcn/input'
 import { Checkbox } from '../../lib/shadcn/checkbox'

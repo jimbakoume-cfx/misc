@@ -2,7 +2,7 @@ import { createContext, useContext, useMemo, type ReactNode } from 'react'
 import { useLocalStorageState, resetAllSuivixData } from './storage'
 import { buildAllSeedCompanies } from './seed'
 import { craftAssignmentMessage, craftBlockedMessage, craftTaskMessage } from './notifications'
-import { STATUS_CONFIG } from './utils'
+import { companySettings, STATUS_CONFIG } from './utils'
 import type {
   Attachment,
   AttachmentType,
@@ -12,7 +12,6 @@ import type {
   HistoryEventType,
   KpiDefinition,
   Member,
-  NotificationChannel,
   Priority,
   Role,
   SuivixRoot,
@@ -55,12 +54,37 @@ interface NewDossierInput {
   agentId: string | null
   dueDate: string | null
   tags: string[]
+  clientEmail?: string | null
+}
+
+export interface ImportRow {
+  title: string
+  client: string
+  description: string
+  agentId: string | null
+  physicalLocation: string | null
+  status: DossierStatus
+}
+
+interface NewCompanyInput {
+  companyName: string
+  adminName: string
+  email: string
+  phone: string
 }
 
 interface SuivixContextValue {
   companies: Company[]
   currentCompany: Company
   switchCompany: (id: string) => void
+  createCompany: (input: NewCompanyInput) => void
+  dataByCompany: Record<string, SuivixState>
+  signedIn: boolean
+  signIn: (companyId: string, memberId: string) => void
+  signOut: () => void
+  importDossiers: (rows: ImportRow[], authorId: string) => number
+  updateCompany: (patch: Partial<Company>) => void
+  updateMember: (id: string, patch: Partial<Member>) => void
   state: SuivixState
   currentMember: Member
   setCurrentMemberId: (id: string) => void
@@ -84,16 +108,15 @@ interface SuivixContextValue {
   setPhysicalLocation: (dossierId: string, location: string, authorId: string) => void
   markNotificationRead: (id: string) => void
   markAllNotificationsRead: () => void
-  updateMemberNotificationChannel: (memberId: string, channel: NotificationChannel) => void
   resetDemoData: () => void
 }
 
 const SuivixContext = createContext<SuivixContextValue | null>(null)
 
 export function SuivixProvider({ children }: { children: ReactNode }) {
-  // Bumped to v4: SVX- references and the five SME account types — old cached sessions
+  // Bumped to v5: sign-in, company profile and Cameroonian demo data — old cached sessions
   // must not load into it.
-  const [root, setRoot] = useLocalStorageState<SuivixRoot>('root_v4', buildSeedRoot)
+  const [root, setRoot] = useLocalStorageState<SuivixRoot>('root_v6', buildSeedRoot)
 
   const currentCompanyId = root.currentCompanyId
   const state = root.dataByCompany[currentCompanyId] ?? EMPTY_STATE
@@ -116,12 +139,12 @@ export function SuivixProvider({ children }: { children: ReactNode }) {
     }))
   }
 
-  function pushNotification(memberId: string, dossierId: string | null, channel: NotificationChannel, message: string) {
+  function pushNotification(memberId: string, dossierId: string | null, message: string) {
     updateCompanyState((prev) => ({
       ...prev,
       notifications: [
         ...prev.notifications,
-        { id: nowId('notif'), memberId, dossierId, channel, message, sentAt: nowIso(), read: false },
+        { id: nowId('notif'), memberId, dossierId, message, sentAt: nowIso(), read: false },
       ],
     }))
   }
@@ -135,6 +158,86 @@ export function SuivixProvider({ children }: { children: ReactNode }) {
       companies: root.companies,
       currentCompany,
       switchCompany: (id: string) => setRoot((prev) => ({ ...prev, currentCompanyId: id })),
+      dataByCompany: root.dataByCompany,
+
+      // A new workspace starts empty with its creator as administrator, on the free plan.
+      createCompany: ({ companyName, adminName, email, phone }) => {
+        const companyId = nowId('co')
+        const admin: Member = {
+          id: nowId('mem'),
+          name: adminName,
+          email,
+          phone,
+          role: 'admin',
+          status: 'actif',
+          color: 'blue',
+          createdAt: nowIso(),
+        }
+        const company: Company = {
+          id: companyId,
+          name: companyName,
+          slug: companyName.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+          plan: 'starter',
+          createdAt: nowIso(),
+        }
+        setRoot((prev) => ({
+          ...prev,
+          companies: [...prev.companies, company],
+          currentCompanyId: companyId,
+          dataByCompany: { ...prev.dataByCompany, [companyId]: { ...EMPTY_STATE, members: [admin] } },
+          currentMemberIdByCompany: { ...prev.currentMemberIdByCompany, [companyId]: admin.id },
+          signedIn: true,
+        }))
+      },
+
+      signedIn: !!root.signedIn,
+      signIn: (companyId, memberId) =>
+        setRoot((prev) => ({
+          ...prev,
+          currentCompanyId: companyId,
+          currentMemberIdByCompany: { ...prev.currentMemberIdByCompany, [companyId]: memberId },
+          signedIn: true,
+        })),
+      signOut: () => setRoot((prev) => ({ ...prev, signedIn: false })),
+
+      updateCompany: (patch) =>
+        setRoot((prev) => ({ ...prev, companies: prev.companies.map((c) => (c.id === prev.currentCompanyId ? { ...c, ...patch } : c)) })),
+      updateMember: (id, patch) =>
+        updateCompanyState((prev) => ({ ...prev, members: prev.members.map((m) => (m.id === id ? { ...m, ...patch } : m)) })),
+
+      // Bulk import of an existing register: references are numbered in one pass so they stay unique.
+      importDossiers: (rows, authorId) => {
+        const year = new Date().getFullYear()
+        const base = state.dossiers.length
+        const now = nowIso()
+        const dossiers: Dossier[] = rows.map((r, i) => ({
+          id: nowId('dos') + i,
+          reference: `${companySettings(currentCompany).refPrefix}-${year}-${(base + i + 101).toString().padStart(4, '0')}`,
+          title: r.title,
+          client: r.client,
+          description: r.description,
+          status: r.status,
+          priority: 'normale',
+          agentId: r.agentId,
+          tags: [],
+          createdAt: now,
+          updatedAt: now,
+          dueDate: null,
+          blockReason: null,
+          physicalLocation: r.physicalLocation,
+          clientEmail: null,
+        }))
+        const history = dossiers.map((d) => ({
+          id: nowId('hist') + d.id,
+          dossierId: d.id,
+          date: now,
+          type: 'creation' as const,
+          description: 'Dossier importé depuis un registre existant',
+          authorId,
+        }))
+        updateCompanyState((prev) => ({ ...prev, dossiers: [...prev.dossiers, ...dossiers], history: [...prev.history, ...history] }))
+        return dossiers.length
+      },
 
       state,
       currentMember,
@@ -149,7 +252,7 @@ export function SuivixProvider({ children }: { children: ReactNode }) {
         const count = state.dossiers.length + 1
         const dossier: Dossier = {
           id,
-          reference: `SVX-${new Date().getFullYear()}-${(count + 100).toString().padStart(4, '0')}`,
+          reference: `${companySettings(currentCompany).refPrefix}-${new Date().getFullYear()}-${(count + 100).toString().padStart(4, '0')}`,
           title: input.title,
           client: input.client,
           description: input.description,
@@ -162,13 +265,14 @@ export function SuivixProvider({ children }: { children: ReactNode }) {
           dueDate: input.dueDate,
           blockReason: null,
           physicalLocation: null,
+          clientEmail: input.clientEmail ?? null,
         }
         updateCompanyState((prev) => ({ ...prev, dossiers: [...prev.dossiers, dossier] }))
         pushHistory(id, 'creation', 'Dossier créé', authorId)
         if (input.agentId) {
           const agent = state.members.find((m) => m.id === input.agentId)
           pushHistory(id, 'assignment', `Dossier affecté à ${agent ? agent.name : 'un agent'}`, authorId)
-          if (agent) pushNotification(agent.id, id, agent.notificationChannel, craftAssignmentMessage(dossier.reference, dossier.title))
+          if (agent) pushNotification(agent.id, id, craftAssignmentMessage(dossier.reference, dossier.title))
         }
         return dossier
       },
@@ -199,7 +303,7 @@ export function SuivixProvider({ children }: { children: ReactNode }) {
           const dossier = state.dossiers.find((d) => d.id === id)
           const agent = dossier?.agentId ? state.members.find((m) => m.id === dossier.agentId) : null
           if (dossier && agent) {
-            pushNotification(agent.id, id, agent.notificationChannel, craftBlockedMessage(dossier.reference, blockReason ?? dossier.blockReason ?? 'motif non renseigné'))
+            pushNotification(agent.id, id, craftBlockedMessage(dossier.reference, blockReason ?? dossier.blockReason ?? 'motif non renseigné'))
           }
         }
       },
@@ -213,7 +317,7 @@ export function SuivixProvider({ children }: { children: ReactNode }) {
         pushHistory(id, 'assignment', agent ? `Dossier affecté à ${agent.name}` : 'Dossier désaffecté', authorId)
         if (agent) {
           const dossier = state.dossiers.find((d) => d.id === id)
-          if (dossier) pushNotification(agent.id, id, agent.notificationChannel, craftAssignmentMessage(dossier.reference, dossier.title))
+          if (dossier) pushNotification(agent.id, id, craftAssignmentMessage(dossier.reference, dossier.title))
         }
       },
 
@@ -246,7 +350,7 @@ export function SuivixProvider({ children }: { children: ReactNode }) {
         if (assigneeId) {
           const assignee = state.members.find((m) => m.id === assigneeId)
           const dossier = state.dossiers.find((d) => d.id === dossierId)
-          if (assignee && dossier) pushNotification(assignee.id, dossierId, assignee.notificationChannel, craftTaskMessage(dossier.reference, title))
+          if (assignee && dossier) pushNotification(assignee.id, dossierId, craftTaskMessage(dossier.reference, title))
         }
         return task
       },
@@ -284,7 +388,6 @@ export function SuivixProvider({ children }: { children: ReactNode }) {
           role,
           status: 'en_attente',
           color: ['violet', 'blue', 'emerald', 'amber', 'rose', 'cyan', 'orange'][Math.floor(Math.random() * 7)] as string,
-          notificationChannel: 'email',
           createdAt: nowIso(),
         }
         updateCompanyState((prev) => ({ ...prev, members: [...prev.members, member] }))
@@ -335,13 +438,6 @@ export function SuivixProvider({ children }: { children: ReactNode }) {
 
       markAllNotificationsRead: () => {
         updateCompanyState((prev) => ({ ...prev, notifications: prev.notifications.map((n) => ({ ...n, read: true })) }))
-      },
-
-      updateMemberNotificationChannel: (memberId, channel) => {
-        updateCompanyState((prev) => ({
-          ...prev,
-          members: prev.members.map((m) => (m.id === memberId ? { ...m, notificationChannel: channel } : m)),
-        }))
       },
 
       resetDemoData: () => {

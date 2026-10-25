@@ -8,7 +8,6 @@ import type {
   KpiDefinition,
   Member,
   MemberStatus,
-  NotificationChannel,
   Plan,
   Priority,
   Role,
@@ -38,17 +37,17 @@ function mulberry32(seed: number) {
 
 const CLIENTS = [
   'Ministère de la Transition Écologique',
-  'Préfecture d’Abidjan',
+  'Préfecture du Mfoundi',
   'Groupe Aurex Industries',
-  'Mairie de Dakar',
-  'CHU de Cocody',
-  'Banque Panafricaine Meridia',
+  'Mairie de Douala 1er',
+  'Hôpital Général de Yaoundé',
+  'Banque Meridia Cameroun',
   'SCI Les Baobabs',
-  'Fondation Horizon Sahel',
-  'Assurances Vertes CI',
-  'Cabinet Notarial Kouassi',
+  'Fondation Horizon Adamaoua',
+  'Assurances Vertes Cameroun',
+  'Étude Notariale Me Ngono',
   'Port Autonome de Douala',
-  'Chambre de Commerce de Libreville',
+  'Chambre de Commerce de Douala',
 ]
 
 const TITLES = [
@@ -70,7 +69,7 @@ const TITLES = [
   'Ouverture de succursale régionale',
 ]
 
-const TAGS_POOL = ['urgent', 'confidentiel', 'multi-sites', 'récurrent', 'nouveau client', 'suivi juridique', 'à relancer', 'export UEMOA']
+const TAGS_POOL = ['urgent', 'confidentiel', 'multi-sites', 'récurrent', 'nouveau client', 'suivi juridique', 'à relancer', 'export CEMAC']
 
 const BLOCK_REASONS = [
   'En attente de pièce complémentaire du client',
@@ -84,8 +83,8 @@ const BLOCK_REASONS = [
 const PHYSICAL_LOCATIONS = [
   'Archives centrales — Allée 3, Casier 12',
   'Archives centrales — Allée 7, Casier 4',
-  'Bureau régional Abidjan — Salle 204',
-  'Bureau régional Dakar — Salle 12',
+  'Agence de Douala — Salle 204',
+  'Agence de Garoua — Salle 12',
   'Coffre sécurisé — Direction Juridique',
   'En transit vers Douala',
   'Numérisé uniquement — pas de copie papier',
@@ -110,7 +109,7 @@ export interface MemberSeedInput {
   role: Role
   status: MemberStatus
   color: string
-  notificationChannel: NotificationChannel
+  jobTitle?: string
 }
 
 export interface CompanySeedConfig {
@@ -120,10 +119,11 @@ export interface CompanySeedConfig {
   seed: number
   dossierCount: number
   members: MemberSeedInput[]
+  extra?: Pick<Company, 'profile' | 'settings'>
 }
 
-// A single flagship tenant on the Enterprise plan — a pan-African professional services
-// group headquartered in Abidjan with staff across the region.
+// A single flagship tenant on the Enterprise plan — a professional services firm
+// headquartered in Yaoundé with an office in Douala.
 export const COMPANY_SEEDS: CompanySeedConfig[] = [
   {
     name: 'Groupe Baobab Conseil',
@@ -131,17 +131,31 @@ export const COMPANY_SEEDS: CompanySeedConfig[] = [
     plan: 'enterprise',
     seed: 20240930,
     dossierCount: 48,
+    extra: {
+      profile: {
+        legalName: 'Groupe Baobab Conseil SA',
+        sector: 'Conseil juridique, fiscal et administratif',
+        niu: 'M052400012345K',
+        rccm: 'RC/YAO/2019/B/1234',
+        address: 'Rue 1.750, Bastos',
+        city: 'Yaoundé',
+        phone: '+237 222 20 14 50',
+        email: 'contact@baobab-conseil.cm',
+        website: 'baobab-conseil.cm',
+      },
+      settings: { refPrefix: 'SVX', inactivityDays: 7, dueSoonDays: 3 },
+    },
     members: [
-      { name: 'Aïssatou Koné', email: 'a.kone@baobab-conseil.africa', phone: '+225 07 11 22 33 44', role: 'admin', status: 'actif', color: 'violet', notificationChannel: 'whatsapp' },
-      { name: 'Jean-Baptiste Owona', email: 'jb.owona@baobab-conseil.africa', phone: '+237 6 90 11 22 33', role: 'directeur', status: 'actif', color: 'blue', notificationChannel: 'whatsapp' },
-      { name: 'Fatou Diagne', email: 'f.diagne@baobab-conseil.africa', phone: '+221 77 111 22 33', role: 'chef_service', status: 'actif', color: 'emerald', notificationChannel: 'whatsapp' },
-      { name: 'Yao Kouadio', email: 'y.kouadio@baobab-conseil.africa', phone: '+225 05 55 66 77 88', role: 'collaborateur', status: 'actif', color: 'amber', notificationChannel: 'whatsapp' },
-      { name: 'Grace Mbeki', email: 'g.mbeki@baobab-conseil.africa', phone: '+243 81 234 56 78', role: 'collaborateur', status: 'actif', color: 'rose', notificationChannel: 'sms' },
-      { name: 'Salimata Traoré', email: 's.traore@baobab-conseil.africa', phone: '+223 76 12 34 56', role: 'collaborateur', status: 'actif', color: 'cyan', notificationChannel: 'whatsapp' },
-      { name: 'Steeve Ndong', email: 's.ndong@baobab-conseil.africa', phone: '+241 06 12 34 56', role: 'collaborateur', status: 'actif', color: 'orange', notificationChannel: 'sms' },
-      { name: 'Chantal Mukendi', email: 'c.mukendi@baobab-conseil.africa', phone: '+243 99 887 66 55', role: 'collaborateur', status: 'actif', color: 'blue', notificationChannel: 'whatsapp' },
-      { name: 'Marième Ba', email: 'm.ba@baobab-conseil.africa', phone: '+221 78 222 33 44', role: 'collaborateur', status: 'en_attente', color: 'rose', notificationChannel: 'whatsapp' },
-      { name: 'Paul-Henri Assogba', email: 'ph.assogba@baobab-conseil.africa', phone: '+229 97 12 34 56', role: 'secretariat', status: 'actif', color: 'emerald', notificationChannel: 'email' },
+      { name: 'Aïssatou Koné', email: 'a.kone@baobab-conseil.cm', phone: '+237 677 11 22 33', jobTitle: 'Directrice administrative', role: 'admin', status: 'actif', color: 'violet' },
+      { name: 'Jean-Baptiste Owona', email: 'jb.owona@baobab-conseil.cm', phone: '+237 690 11 22 33', jobTitle: 'Directeur général', role: 'directeur', status: 'actif', color: 'blue' },
+      { name: 'Fatou Diagne', email: 'f.diagne@baobab-conseil.cm', phone: '+237 699 21 43 65', jobTitle: 'Cheffe du service juridique', role: 'chef_service', status: 'actif', color: 'emerald' },
+      { name: 'Yao Kouadio', email: 'y.kouadio@baobab-conseil.cm', phone: '+237 655 55 66 77', jobTitle: 'Juriste', role: 'collaborateur', status: 'actif', color: 'amber' },
+      { name: 'Grace Mbeki', email: 'g.mbeki@baobab-conseil.cm', phone: '+237 681 23 45 67', jobTitle: 'Fiscaliste', role: 'collaborateur', status: 'actif', color: 'rose' },
+      { name: 'Salimata Traoré', email: 's.traore@baobab-conseil.cm', phone: '+237 670 12 34 56', jobTitle: 'Juriste', role: 'collaborateur', status: 'actif', color: 'cyan' },
+      { name: 'Steeve Ndong', email: 's.ndong@baobab-conseil.cm', phone: '+237 694 12 34 56', jobTitle: 'Assistant juridique', role: 'collaborateur', status: 'actif', color: 'orange' },
+      { name: 'Chantal Mukendi', email: 'c.mukendi@baobab-conseil.cm', phone: '+237 699 88 76 65', jobTitle: 'Comptable', role: 'collaborateur', status: 'actif', color: 'blue' },
+      { name: 'Marième Ba', email: 'm.ba@baobab-conseil.cm', phone: '+237 678 22 33 44', jobTitle: 'Juriste stagiaire', role: 'collaborateur', status: 'en_attente', color: 'rose' },
+      { name: 'Paul-Henri Assogba', email: 'ph.assogba@baobab-conseil.cm', phone: '+237 697 12 34 56', jobTitle: 'Responsable courrier', role: 'secretariat', status: 'actif', color: 'emerald' },
     ],
   },
 ]
@@ -249,7 +263,6 @@ export function buildSeedState(config: CompanySeedConfig, companyId: string): Su
           id: nextId('notif'),
           memberId: assignedAgent.id,
           dossierId,
-          channel: assignedAgent.notificationChannel,
           message: craftAssignmentMessage(reference, dossier.title),
           sentAt: updatedAt,
           read: rand() > 0.4,
@@ -351,6 +364,6 @@ export function buildAllSeedCompanies(): SeededCompany[] {
       plan: config.plan,
       createdAt: isoDaysFromNow(-(365 - index * 40)),
     }
-    return { company, state: buildSeedState(config, companyId) }
+    return { company: { ...company, ...config.extra }, state: buildSeedState(config, companyId) }
   })
 }

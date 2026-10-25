@@ -1,4 +1,4 @@
-import { Bell, Mail, MessageCircle, Smartphone } from 'lucide-react'
+import { IconBell as Bell, IconMail as Mail } from '@tabler/icons-react'
 import { Link } from 'react-router-dom'
 import {
   DropdownMenu,
@@ -9,15 +9,8 @@ import {
   DropdownMenuTrigger,
 } from '../../lib/shadcn/dropdown-menu'
 import { Button } from '../../lib/shadcn/button'
-import type { AppNotification, NotificationChannel } from '../../lib/suivix/types'
-import { CHANNEL_LABELS } from '../../lib/suivix/notifications'
+import type { AppNotification } from '../../lib/suivix/types'
 import { formatDateTime } from '../../lib/suivix/utils'
-
-const CHANNEL_ICON: Record<NotificationChannel, typeof Mail> = {
-  whatsapp: MessageCircle,
-  sms: Smartphone,
-  email: Mail,
-}
 
 export function NotificationsBell({
   notifications,
@@ -43,7 +36,7 @@ export function NotificationsBell({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-80">
         <div className="flex items-center justify-between px-density-sm py-density-xs">
-          <DropdownMenuLabel className="p-0">Notifications (WhatsApp / SMS / Email)</DropdownMenuLabel>
+          <DropdownMenuLabel className="p-0">Notifications</DropdownMenuLabel>
           {unreadCount > 0 && (
             <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={onMarkAllRead}>
               Tout marquer lu
@@ -54,14 +47,13 @@ export function NotificationsBell({
         {sorted.length === 0 && <p className="px-density-sm py-density-md text-center text-sm text-muted-foreground">Aucune notification.</p>}
         <div className="max-h-96 overflow-y-auto">
           {sorted.map((n) => {
-            const Icon = CHANNEL_ICON[n.channel]
             const content = (
               <div className="flex items-start gap-2">
-                <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${n.channel === 'whatsapp' ? 'text-success' : n.channel === 'sms' ? 'text-primary' : 'text-muted-foreground'}`} />
+                <Mail className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                 <div className="min-w-0 flex-1">
                   <p className={`text-sm ${n.read ? 'text-muted-foreground' : 'font-medium'}`}>{n.message}</p>
                   <p className="text-[11px] text-muted-foreground">
-                    {CHANNEL_LABELS[n.channel]} · {formatDateTime(n.sentAt)}
+                    Envoyé par email · {formatDateTime(n.sentAt)}
                   </p>
                 </div>
                 {!n.read && <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />}

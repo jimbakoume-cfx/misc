@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AlertTriangle, Ban, CalendarClock, Clock3 } from 'lucide-react'
+import { IconAlertTriangle as AlertTriangle, IconBan as Ban, IconCalendarTime as CalendarClock, IconClock as Clock3 } from '@tabler/icons-react'
 import { Card, CardContent } from '../lib/shadcn/card'
 import { Badge } from '../lib/shadcn/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../lib/shadcn/select'
 import { useSuivix } from '../lib/suivix/context'
-import { computeAlerts, visibleDossiersFor, type AlertSeverity } from '../lib/suivix/utils'
+import { companySettings, computeAlerts, visibleDossiersFor, type AlertSeverity } from '../lib/suivix/utils'
 import type { AlertItem } from '../lib/suivix/utils'
 import { PageHeader } from '../components/suivix/PageHeader'
 
@@ -28,12 +28,12 @@ function severityBadge(severity: AlertSeverity) {
 }
 
 export default function Alertes() {
-  const { state, currentMember } = useSuivix()
+  const { state, currentMember, currentCompany } = useSuivix()
   const navigate = useNavigate()
   const [typeFilter, setTypeFilter] = useState<string>('all')
 
   const visible = useMemo(() => visibleDossiersFor(currentMember, state.dossiers), [currentMember, state.dossiers])
-  const alerts = useMemo(() => computeAlerts(visible), [visible])
+  const alerts = useMemo(() => computeAlerts(visible, companySettings(currentCompany)), [visible, currentCompany])
   const filtered = typeFilter === 'all' ? alerts : alerts.filter((a) => a.type === typeFilter)
   const dossierCount = new Set(alerts.map((a) => a.dossierId)).size
 

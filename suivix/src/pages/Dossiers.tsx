@@ -9,7 +9,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table'
-import { ArrowUpDown, FolderOpen, ListChecks, Paperclip, Plus, Search, X } from 'lucide-react'
+import { IconArrowsSort as ArrowUpDown, IconFileSpreadsheet as FileSpreadsheet, IconFolderOpen as FolderOpen, IconListCheck as ListChecks, IconPaperclip as Paperclip, IconPlus as Plus, IconSearch as Search, IconX as X } from '@tabler/icons-react'
 import { Button } from '../lib/shadcn/button'
 import { Input } from '../lib/shadcn/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../lib/shadcn/select'
@@ -17,7 +17,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { useSuivix } from '../lib/suivix/context'
 import { canCreateDossier, canManageDossiers, daysSince, formatDate, openTasksCount, STATUS_CONFIG, visibleDossiersFor } from '../lib/suivix/utils'
 import type { Dossier, DossierStatus } from '../lib/suivix/types'
-import { PriorityBadge, StatusBadge, MemberAvatar } from '../components/suivix/Badges'
+import { StatusBadge, MemberAvatar } from '../components/suivix/Badges'
+import { ImportDialog } from '../components/suivix/ImportDialog'
 import { PageHeader, EmptyState } from '../components/suivix/PageHeader'
 import { useShell } from '../components/suivix/Layout'
 
@@ -39,6 +40,7 @@ export default function Dossiers() {
   const [statusFilter, setStatusFilter] = useState<string>(params.get('statut') ?? 'all')
   const [agentFilter, setAgentFilter] = useState<string>(params.get('detenteur') ?? 'all')
   const [period, setPeriod] = useState('all')
+  const [importOpen, setImportOpen] = useState(false)
   const [sorting, setSorting] = useState<SortingState>([{ id: 'updatedAt', desc: true }])
   const canCreate = canCreateDossier(currentMember.role)
   const canFilterByAgent = canManageDossiers(currentMember.role) || currentMember.role === 'secretariat'
@@ -46,7 +48,7 @@ export default function Dossiers() {
   const baseDossiers = useMemo(() => visibleDossiersFor(currentMember, state.dossiers), [currentMember, state.dossiers])
 
   // Full-text search (formerly the Recherche page): reference, object, organisation, description,
-  // tags, attachment names and task titles. `matchedIn` explains hits found inside pieces or tasks.
+  // attachment names and task titles. `matchedIn` explains hits found inside pieces or tasks.
   const q = search.trim().toLowerCase()
   const { filtered, matchedIn } = useMemo(() => {
     const matchedIn = new Map<string, 'pièce jointe' | 'tâche'>()
@@ -56,7 +58,7 @@ export default function Dossiers() {
       const days = PERIODS.find((p) => p.value === period)?.days
       if (days != null && daysSince(d.createdAt) >= days) return false
       if (!q) return true
-      const own = `${d.reference} ${d.title} ${d.client} ${d.description} ${d.tags.join(' ')}`.toLowerCase()
+      const own = `${d.reference} ${d.title} ${d.client} ${d.description}`.toLowerCase()
       if (own.includes(q)) return true
       if (state.attachments.some((a) => a.dossierId === d.id && a.name.toLowerCase().includes(q))) {
         matchedIn.set(d.id, 'pièce jointe')
@@ -103,11 +105,6 @@ export default function Dossiers() {
         accessorKey: 'status',
         header: 'Statut',
         cell: ({ row }) => <StatusBadge status={row.original.status} />,
-      },
-      {
-        accessorKey: 'priority',
-        header: 'Priorité',
-        cell: ({ row }) => <PriorityBadge priority={row.original.priority} />,
       },
       {
         accessorKey: 'agentId',
@@ -170,10 +167,16 @@ export default function Dossiers() {
         subtitle={`${filtered.length} dossier${filtered.length === 1 ? '' : 's'} — retrouvez n'importe quel dossier : qui le détient, où il se trouve, où il en est.`}
         actions={
           canCreate && (
-            <Button onClick={openNewDossier}>
-              <Plus className="h-4 w-4" />
-              Nouveau dossier
-            </Button>
+            <>
+              <Button variant="outline" onClick={() => setImportOpen(true)}>
+                <FileSpreadsheet className="h-4 w-4" />
+                Importer
+              </Button>
+              <Button onClick={openNewDossier}>
+                <Plus className="h-4 w-4" />
+                Nouveau dossier
+              </Button>
+            </>
           )
         }
       />
@@ -276,18 +279,15 @@ export default function Dossiers() {
                       Trouvé dans une {hit}
                     </p>
                   )}
-                  <div className="mt-2.5 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                    <span className="flex min-w-0 items-center gap-1.5">
-                      {agent ? (
-                        <>
-                          <MemberAvatar name={agent.name} color={agent.color} size="sm" />
-                          <span className="truncate">{agent.name}</span>
-                        </>
-                      ) : (
-                        'Non affecté'
-                      )}
-                    </span>
-                    <PriorityBadge priority={d.priority} />
+                  <div className="mt-2.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                    {agent ? (
+                      <>
+                        <MemberAvatar name={agent.name} color={agent.color} size="sm" />
+                        <span className="truncate">{agent.name}</span>
+                      </>
+                    ) : (
+                      'Non affecté'
+                    )}
                   </div>
                 </button>
               </li>
@@ -339,6 +339,7 @@ export default function Dossiers() {
         </Button>
       </div>
 
+      <ImportDialog open={importOpen} onOpenChange={setImportOpen} />
     </div>
   )
 }

@@ -1,21 +1,21 @@
 import { useState } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
 import {
-  ArrowRightLeft,
-  Building2,
-  CalendarClock,
-  ChevronRight,
-  Download,
-  FileDown,
-  MapPin,
-  MoreHorizontal,
-  Paperclip,
-  Pencil,
-  ListChecks,
-  History,
-  QrCode,
-  Trash2,
-} from 'lucide-react'
+  IconArrowsLeftRight as ArrowRightLeft,
+  IconBuilding as Building2,
+  IconCalendarTime as CalendarClock,
+  IconChevronRight as ChevronRight,
+  IconFileDownload as FileDown,
+  IconMapPin as MapPin,
+  IconDots as MoreHorizontal,
+  IconPaperclip as Paperclip,
+  IconPencil as Pencil,
+  IconListCheck as ListChecks,
+  IconHistory as History,
+  IconQrcode as QrCode,
+  IconReceipt as Receipt,
+  IconTrash as Trash2,
+} from '@tabler/icons-react'
 import { Button } from '../lib/shadcn/button'
 import { Card, CardContent } from '../lib/shadcn/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../lib/shadcn/tabs'
@@ -41,7 +41,8 @@ import {
 import { useSuivix } from '../lib/suivix/context'
 import { canDeleteDossier, canManageDossiers, formatDate, formatDateTime, ROLE_CONFIG, STATUS_CONFIG } from '../lib/suivix/utils'
 import type { DossierStatus } from '../lib/suivix/types'
-import { PriorityBadge, StatusBadge, MemberAvatar } from '../components/suivix/Badges'
+import { StatusBadge, MemberAvatar } from '../components/suivix/Badges'
+import { ReceiptDialog } from '../components/suivix/ReceiptDialog'
 import { DossierFormDialog, parseTagsInput } from '../components/suivix/DossierFormDialog'
 import { AttachmentsPanel } from '../components/suivix/AttachmentsPanel'
 import { TasksPanel } from '../components/suivix/TasksPanel'
@@ -49,7 +50,7 @@ import { HistoryTimeline } from '../components/suivix/HistoryTimeline'
 import { PhysicalTrackingPanel } from '../components/suivix/PhysicalTrackingPanel'
 import { TraceRail } from '../components/suivix/TraceRail'
 import { useShell } from '../components/suivix/Layout'
-import { exportDossierAsPdf, exportDossierAsWord } from '../lib/suivix/exportDoc'
+import { exportDossierAsPdf } from '../lib/suivix/exportDoc'
 import { toast } from '../lib/shadcn/sonner'
 
 export default function DossierDetail() {
@@ -73,6 +74,7 @@ export default function DossierDetail() {
 
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [receiptOpen, setReceiptOpen] = useState(false)
   const [blockReasonOpen, setBlockReasonOpen] = useState(false)
   const [blockReasonText, setBlockReasonText] = useState('')
 
@@ -137,12 +139,6 @@ export default function DossierDetail() {
             <span className="inline-flex items-center gap-1.5">
               <Building2 className="h-4 w-4" /> {dossier.client}
             </span>
-            <PriorityBadge priority={dossier.priority} />
-            {dossier.tags.map((t) => (
-              <span key={t} className="rounded-full border border-border bg-card px-2 py-0.5 text-xs">
-                #{t}
-              </span>
-            ))}
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-density-sm">
@@ -163,8 +159,8 @@ export default function DossierDetail() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
-              <DropdownMenuItem onSelect={() => exportDossierAsWord(dossier, state.history, state.attachments, state.tasks, state.members)}>
-                <Download /> Exporter en Word
+              <DropdownMenuItem onSelect={() => setReceiptOpen(true)}>
+                <Receipt /> Accusé de réception
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => exportDossierAsPdf(dossier, state.history, state.attachments, state.tasks, state.members)}>
                 <FileDown /> Exporter en PDF
@@ -367,12 +363,15 @@ export default function DossierDetail() {
               agentId: values.agentId,
               dueDate: values.dueDate,
               tags: parseTagsInput(values.tags),
+              clientEmail: values.clientEmail.trim() || null,
             },
             currentMember.id
           )
           toast.success('Dossier mis à jour')
         }}
       />
+
+      <ReceiptDialog dossier={dossier} open={receiptOpen} onOpenChange={setReceiptOpen} />
 
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>

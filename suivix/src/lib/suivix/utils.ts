@@ -1,9 +1,8 @@
 import type {
+  Company,
+  CompanySettings,
   Dossier,
   DossierStatus,
-  KpiDefinition,
-  KpiMetric,
-  KpiPeriod,
   Member,
   Plan,
   Priority,
@@ -59,7 +58,7 @@ export const PRIORITY_CONFIG: Record<Priority, { label: string; badge: 'default'
 
 export const ROLE_CONFIG: Record<Role, { label: string; description: string }> = {
   admin: { label: 'Administrateur', description: 'Gère le compte, les utilisateurs, les paramètres et a accès à tout.' },
-  directeur: { label: 'Directeur', description: "Vue d'ensemble de l'activité, pilotage, KPI et journal d'audit." },
+  directeur: { label: 'Directeur', description: "Vue d'ensemble de l'activité, des blocages et de la charge de l'équipe." },
   chef_service: { label: 'Chef de service', description: 'Pilote les dossiers de son service et les répartit entre collaborateurs.' },
   collaborateur: { label: 'Collaborateur', description: 'Traite les dossiers qui lui sont confiés et pointe les transferts.' },
   secretariat: { label: 'Secrétariat / Courrier', description: 'Enregistre les dossiers entrants, les oriente et sait où ils se trouvent.' },
@@ -68,9 +67,39 @@ export const ROLE_CONFIG: Record<Role, { label: string; description: string }> =
 export const ROLE_ORDER: Role[] = ['admin', 'directeur', 'chef_service', 'collaborateur', 'secretariat']
 
 export const PLAN_LABELS: Record<Plan, string> = {
-  starter: 'Plan Starter',
-  pro: 'Plan Pro',
-  enterprise: 'Plan Enterprise',
+  starter: 'Plan Découverte',
+  pro: 'Plan Essentiel',
+  enterprise: 'Plan Entreprise',
+}
+
+// The three offers from the commercial deck. Payment is handled by the Suivix team for now.
+export const PLAN_OFFERS: { plan: Plan; name: string; price: string; period: string; features: string[] }[] = [
+  {
+    plan: 'starter',
+    name: 'Découverte',
+    price: 'Gratuit',
+    period: 'pour essayer',
+    features: ["Jusqu'à 3 utilisateurs", '50 dossiers actifs', 'Pièces jointes et tâches', 'Formation : tutoriels vidéo'],
+  },
+  {
+    plan: 'pro',
+    name: 'Essentiel',
+    price: '49 500 FCFA',
+    period: 'par mois',
+    features: ["Jusqu'à 15 utilisateurs", 'Dossiers illimités, 5 rôles', 'Alertes par email, étiquettes QR', 'Formation : session de 2 h en ligne'],
+  },
+  {
+    plan: 'enterprise',
+    name: 'Entreprise',
+    price: '99 500 FCFA',
+    period: 'par mois',
+    features: ['Utilisateurs illimités', 'Multi-sites', 'Support prioritaire', 'Formation : demi-journée sur site'],
+  },
+]
+
+// mailto link with a prefilled subject and body, opened in the user's mail app.
+export function mailtoLink(to: string | null | undefined, subject: string, body: string): string {
+  return `mailto:${to ?? ''}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
 }
 
 export const AVATAR_COLOR_CLASSES: Record<string, string> = {
@@ -121,18 +150,6 @@ export function canAssignDossier(role: Role): boolean {
   return role !== 'collaborateur'
 }
 
-export function canViewDashboards(role: Role): boolean {
-  return role === 'admin' || role === 'directeur' || role === 'chef_service'
-}
-
-export function canViewKpi(role: Role): boolean {
-  return role === 'admin' || role === 'directeur' || role === 'chef_service'
-}
-
-export function canViewAuditLog(role: Role): boolean {
-  return role === 'admin' || role === 'directeur'
-}
-
 export function canManageSettings(role: Role): boolean {
   return role === 'admin'
 }
@@ -159,10 +176,15 @@ export interface AlertItem {
   message: string
 }
 
-const STAGNATION_THRESHOLD_DAYS = 7
-const ECHEANCE_WARNING_DAYS = 3
+export const DEFAULT_SETTINGS: CompanySettings = { refPrefix: 'SVX', inactivityDays: 7, dueSoonDays: 3 }
 
-export function computeAlerts(dossiers: Dossier[]): AlertItem[] {
+export function companySettings(company: Company): CompanySettings {
+  return { ...DEFAULT_SETTINGS, ...company.settings }
+}
+
+export function computeAlerts(dossiers: Dossier[], settings: Pick<CompanySettings, 'inactivityDays' | 'dueSoonDays'> = DEFAULT_SETTINGS): AlertItem[] {
+  const STAGNATION_THRESHOLD_DAYS = settings.inactivityDays
+  const ECHEANCE_WARNING_DAYS = settings.dueSoonDays
   const alerts: AlertItem[] = []
   for (const d of dossiers) {
     if (d.status === 'termine') continue
@@ -214,91 +236,6 @@ export function computeAlerts(dossiers: Dossier[]): AlertItem[] {
 
 function severityRank(s: AlertSeverity): number {
   return s === 'critical' ? 2 : s === 'warning' ? 1 : 0
-}
-
-// ---------- KPI computation ----------
-
-export function periodToDays(period: KpiPeriod): number | null {
-  if (period === '7j') return 7
-  if (period === '30j') return 30
-  if (period === '90j') return 90
-  return null
-}
-
-export function filterDossiersByPeriod(dossiers: Dossier[], period: KpiPeriod): Dossier[] {
-  const days = periodToDays(period)
-  if (days == null) return dossiers
-  return dossiers.filter((d) => daysSince(d.createdAt) <= days)
-}
-
-export interface KpiResult {
-  metric: KpiMetric
-  value: number
-  unit: string
-  label: string
-  normalized: number // 0-100, higher is always better
-}
-
-export function computeMetric(metric: KpiMetric, dossiers: Dossier[]): KpiResult {
-  switch (metric) {
-    case 'volume_traite': {
-      const value = dossiers.filter((d) => d.status === 'termine').length
-      return { metric, value, unit: 'dossiers', label: 'Volume traité', normalized: Math.min(100, (value / 20) * 100) }
-    }
-    case 'taux_completion': {
-      const total = dossiers.length
-      const done = dossiers.filter((d) => d.status === 'termine').length
-      const value = total > 0 ? Math.round((done / total) * 100) : 0
-      return { metric, value, unit: '%', label: 'Taux de complétion', normalized: value }
-    }
-    case 'delai_moyen': {
-      const finished = dossiers.filter((d) => d.status === 'termine')
-      const value =
-        finished.length > 0
-          ? Math.round(finished.reduce((sum, d) => sum + daysBetween(d.createdAt, d.updatedAt), 0) / finished.length)
-          : 0
-      const normalized = Math.max(0, 100 - Math.min(100, (value / 30) * 100))
-      return { metric, value, unit: 'jours', label: 'Délai moyen de traitement', normalized }
-    }
-    case 'taux_blocage': {
-      const total = dossiers.length
-      const blocked = dossiers.filter((d) => d.status === 'bloque').length
-      const value = total > 0 ? Math.round((blocked / total) * 100) : 0
-      return { metric, value, unit: '%', label: 'Taux de blocage', normalized: Math.max(0, 100 - value) }
-    }
-    case 'dossiers_en_retard': {
-      const value = dossiers.filter((d) => d.status !== 'termine' && d.dueDate && daysBetween(new Date().toISOString(), d.dueDate) < 0).length
-      return { metric, value, unit: 'dossiers', label: 'Dossiers en retard', normalized: Math.max(0, 100 - value * 10) }
-    }
-  }
-}
-
-export const METRIC_LABELS: Record<KpiMetric, string> = {
-  volume_traite: 'Volume traité',
-  delai_moyen: 'Délai moyen de traitement',
-  taux_blocage: 'Taux de blocage',
-  dossiers_en_retard: 'Dossiers en retard',
-  taux_completion: 'Taux de complétion',
-}
-
-export const PERIOD_LABELS: Record<KpiPeriod, string> = {
-  '7j': '7 derniers jours',
-  '30j': '30 derniers jours',
-  '90j': '90 derniers jours',
-  tout: 'Toute la période',
-}
-
-export function computeCompositeScore(definitions: KpiDefinition[], dossiers: Dossier[]): number | null {
-  if (definitions.length === 0) return null
-  let weightedSum = 0
-  let totalWeight = 0
-  for (const def of definitions) {
-    const scoped = filterDossiersByPeriod(dossiers, def.period)
-    const result = computeMetric(def.metric, scoped)
-    weightedSum += result.normalized * def.weight
-    totalWeight += def.weight
-  }
-  return totalWeight > 0 ? Math.round(weightedSum / totalWeight) : null
 }
 
 // ---------- Agent scorecards ----------

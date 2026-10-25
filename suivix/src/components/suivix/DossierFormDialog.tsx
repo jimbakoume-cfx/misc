@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Building2, Check, File as FileIcon, FileText, Paperclip, Plus, X } from 'lucide-react'
+import { IconBuilding as Building2, IconCheck as Check, IconFile as FileIcon, IconFileText as FileText, IconPaperclip as Paperclip, IconPlus as Plus, IconX as X } from '@tabler/icons-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter } from '../../lib/shadcn/dialog'
 import { Button } from '../../lib/shadcn/button'
 import { Input } from '../../lib/shadcn/input'
@@ -8,7 +8,7 @@ import { Label } from '../../lib/shadcn/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../lib/shadcn/select'
 import { toast } from '../../lib/shadcn/sonner'
 import type { AttachmentType, Dossier, Member, Priority } from '../../lib/suivix/types'
-import { formatFileSize, isHolderRole, PRIORITY_CONFIG } from '../../lib/suivix/utils'
+import { formatFileSize, isHolderRole } from '../../lib/suivix/utils'
 import { useSuivix } from '../../lib/suivix/context'
 
 export interface PendingAttachment {
@@ -25,6 +25,7 @@ interface DossierFormValues {
   agentId: string | null
   dueDate: string | null
   tags: string
+  clientEmail: string
   attachments: PendingAttachment[]
 }
 
@@ -88,22 +89,17 @@ export function DossierFormDialog({
           </div>
           <div className="grid grid-cols-1 gap-density-md sm:grid-cols-2">
             <div className="space-y-density-xs">
-              <Label>Priorité</Label>
-              <Select value={values.priority} onValueChange={(v) => setValues((s) => ({ ...s, priority: v as Priority }))}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(PRIORITY_CONFIG) as Priority[]).map((p) => (
-                    <SelectItem key={p} value={p}>
-                      {PRIORITY_CONFIG[p].label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="clientEmail">Email du déposant (facultatif)</Label>
+              <Input
+                id="clientEmail"
+                type="email"
+                value={values.clientEmail}
+                onChange={(e) => setValues((v) => ({ ...v, clientEmail: e.target.value }))}
+                placeholder="Pour l'accusé de réception"
+              />
             </div>
             <div className="space-y-density-xs">
-              <Label>Agent affecté</Label>
+              <Label>Détenteur</Label>
               <Select value={values.agentId ?? 'none'} onValueChange={(v) => setValues((s) => ({ ...s, agentId: v === 'none' ? null : v }))}>
                 <SelectTrigger>
                   <SelectValue />
@@ -119,23 +115,18 @@ export function DossierFormDialog({
               </Select>
             </div>
           </div>
-          <div className={`grid gap-density-md ${dossier ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
-            {dossier && (
-              <div className="space-y-density-xs">
-                <Label htmlFor="dueDate">Échéance</Label>
-                <Input
-                  id="dueDate"
-                  type="date"
-                  value={values.dueDate ?? ''}
-                  onChange={(e) => setValues((v) => ({ ...v, dueDate: e.target.value ? e.target.value : null }))}
-                />
-              </div>
-            )}
+          {dossier && (
             <div className="space-y-density-xs">
-              <Label htmlFor="tags">Étiquettes (séparées par virgule)</Label>
-              <Input id="tags" value={values.tags} onChange={(e) => setValues((v) => ({ ...v, tags: e.target.value }))} placeholder="urgent, confidentiel" />
+              <Label htmlFor="dueDate">Échéance</Label>
+              <Input
+                id="dueDate"
+                type="date"
+                className="sm:w-1/2"
+                value={values.dueDate ?? ''}
+                onChange={(e) => setValues((v) => ({ ...v, dueDate: e.target.value ? e.target.value : null }))}
+              />
             </div>
-          </div>
+          )}
 
           {!dossier && (
             <div className="space-y-density-xs">
@@ -298,7 +289,7 @@ function OrganisationPicker({ value, onChange }: { value: string; onChange: (val
 
 function emptyValues(dossier?: Dossier): DossierFormValues {
   if (!dossier) {
-    return { title: '', client: '', description: '', priority: 'normale', agentId: null, dueDate: null, tags: '', attachments: [] }
+    return { title: '', client: '', description: '', priority: 'normale', agentId: null, dueDate: null, tags: '', clientEmail: '', attachments: [] }
   }
   return {
     title: dossier.title,
@@ -308,6 +299,7 @@ function emptyValues(dossier?: Dossier): DossierFormValues {
     agentId: dossier.agentId,
     dueDate: dossier.dueDate ? dossier.dueDate.slice(0, 10) : null,
     tags: dossier.tags.join(', '),
+    clientEmail: dossier.clientEmail ?? '',
     attachments: [],
   }
 }

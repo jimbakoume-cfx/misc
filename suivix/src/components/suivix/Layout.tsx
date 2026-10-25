@@ -1,28 +1,24 @@
 import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
-  ArrowRightLeft,
-  BellRing,
-  ChevronsUpDown,
-  FolderKanban,
-  FolderPlus,
-  Gauge,
-  LayoutDashboard,
-  Menu,
-  ScrollText,
-  Search,
-  Settings,
-  UserCircle2,
-  Users,
-  X,
-} from 'lucide-react'
+  IconArrowsLeftRight as ArrowRightLeft,
+  IconBellRinging as BellRing,
+  IconSelector as ChevronsUpDown,
+  IconFolders as FolderKanban,
+  IconFolderPlus as FolderPlus,
+  IconLayoutDashboard as LayoutDashboard,
+  IconLogout as LogOut,
+  IconMenu2 as Menu,
+  IconSearch as Search,
+  IconSettings as Settings,
+  IconUsers as UserCircle2,
+  IconX as X,
+} from '@tabler/icons-react'
 import { useSuivix } from '../../lib/suivix/context'
 import {
   canCreateDossier,
-  canViewAuditLog,
-  canViewDashboards,
-  canViewKpi,
   canViewTeam,
+  companySettings,
   computeAlerts,
   initials,
   PLAN_LABELS,
@@ -32,8 +28,8 @@ import {
 import { MemberAvatar } from './Badges'
 import { SuivixLogo } from './Logo'
 import { NotificationsBell } from './NotificationsBell'
-import { ConnectivityWatcher } from './ConnectivityBadge'
-import { PersonaSwitcherModal } from './PersonaSwitcherModal'
+import { ReceiptDialog } from './ReceiptDialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '../../lib/shadcn/dropdown-menu'
 import { CommandPalette, type PaletteCommand } from './CommandPalette'
 import { PointerDialog } from './PointerDialog'
 import { DossierFormDialog, parseTagsInput } from './DossierFormDialog'
@@ -69,11 +65,10 @@ export function useShell(): ShellActions {
 }
 
 export function SuivixLayout({ children }: { children: ReactNode }) {
-  const { state, currentMember, setCurrentMemberId, currentCompany, markNotificationRead, markAllNotificationsRead, createDossier, addAttachment } =
-    useSuivix()
+  const { state, currentMember, currentCompany, markNotificationRead, markAllNotificationsRead, createDossier, addAttachment, signOut } = useSuivix()
   const location = useLocation()
   const navigate = useNavigate()
-  const [personaOpen, setPersonaOpen] = useState(false)
+  const [receiptId, setReceiptId] = useState<string | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [pointer, setPointer] = useState<{ open: boolean; dossierId?: string }>({ open: false })
@@ -84,7 +79,7 @@ export function SuivixLayout({ children }: { children: ReactNode }) {
   const visible = visibleDossiersFor(currentMember, state.dossiers)
   const activeCount = visible.filter((d) => d.status !== 'termine').length
   // Count dossiers needing attention, not individual alerts: one late, idle, blocked dossier is one item.
-  const alertCount = new Set(computeAlerts(visible).filter((a) => a.severity === 'critical').map((a) => a.dossierId)).size
+  const alertCount = new Set(computeAlerts(visible, companySettings(currentCompany)).filter((a) => a.severity === 'critical').map((a) => a.dossierId)).size
 
   useEffect(() => setDrawerOpen(false), [location.pathname])
 
@@ -115,14 +110,6 @@ export function SuivixLayout({ children }: { children: ReactNode }) {
         { to: '/', label: 'Tableau de bord', icon: <LayoutDashboard className="h-4 w-4" />, show: true },
         { to: '/dossiers', label: 'Dossiers', icon: <FolderKanban className="h-4 w-4" />, show: true, count: activeCount },
         { to: '/alertes', label: 'Alertes', icon: <BellRing className="h-4 w-4" />, show: true, count: alertCount },
-      ],
-    },
-    {
-      label: 'Pilotage',
-      items: [
-        { to: '/agents', label: 'Vue par détenteur', icon: <Users className="h-4 w-4" />, show: canViewDashboards(currentMember.role) },
-        { to: '/kpi', label: 'KPI & Scorecards', icon: <Gauge className="h-4 w-4" />, show: canViewKpi(currentMember.role) },
-        { to: '/audit', label: "Journal d'audit", icon: <ScrollText className="h-4 w-4" />, show: canViewAuditLog(currentMember.role) },
       ],
     },
     {
@@ -184,19 +171,32 @@ export function SuivixLayout({ children }: { children: ReactNode }) {
       </nav>
 
       <div className="border-t border-white/10 p-3">
-        <button
-          onClick={() => setPersonaOpen(true)}
-          className="flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left transition-colors hover:bg-white/[0.06]"
-          title="Changer de profil (démo)"
-        >
-          <MemberAvatar name={currentMember.name} color={currentMember.color} size="md" />
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-[0.8rem] font-medium">{currentMember.name}</span>
-            <span className="block truncate text-[0.7rem] text-white/50">{ROLE_CONFIG[currentMember.role].label}</span>
-            <span className="mt-0.5 block font-mono text-[0.6rem] uppercase tracking-wider text-primary/90">Démo · changer de profil</span>
-          </span>
-          <ChevronsUpDown className="h-4 w-4 shrink-0 text-white/40" />
-        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left transition-colors hover:bg-white/[0.06]" aria-label="Mon compte">
+              <MemberAvatar name={currentMember.name} color={currentMember.color} src={currentMember.avatar} size="md" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[0.8rem] font-medium">{currentMember.name}</span>
+                <span className="block truncate text-[0.7rem] text-white/50">{currentMember.jobTitle || ROLE_CONFIG[currentMember.role].label}</span>
+              </span>
+              <ChevronsUpDown className="h-4 w-4 shrink-0 text-white/40" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="top" align="start" className="w-56">
+            <DropdownMenuLabel className="truncate">{currentMember.email || currentMember.phone}</DropdownMenuLabel>
+            <DropdownMenuItem onSelect={() => navigate('/parametres')}>
+              <Settings /> Mon profil et paramètres
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => {
+                navigate('/')
+                signOut()
+              }}
+            >
+              <LogOut /> Se déconnecter
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   )
@@ -252,9 +252,13 @@ export function SuivixLayout({ children }: { children: ReactNode }) {
                 </Button>
               )}
               <div className="ml-1 hidden items-center gap-2.5 border-l border-border pl-3 sm:flex" title={currentCompany.name}>
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-ink font-semibold text-[0.7rem] text-white">
-                  {initials(currentCompany.name)}
-                </div>
+                {currentCompany.logo ? (
+                  <img src={currentCompany.logo} alt={`Logo ${currentCompany.name}`} className="h-9 w-9 shrink-0 rounded-md border border-border bg-white object-contain p-0.5" />
+                ) : (
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-ink font-semibold text-[0.7rem] text-white">
+                    {initials(currentCompany.name)}
+                  </div>
+                )}
                 <div className="hidden min-w-0 max-w-[180px] xl:block">
                   <p className="truncate text-sm font-semibold leading-tight">{currentCompany.name}</p>
                   <p className="eyebrow text-[0.6rem] text-primary">{PLAN_LABELS[currentCompany.plan]}</p>
@@ -270,7 +274,6 @@ export function SuivixLayout({ children }: { children: ReactNode }) {
           </main>
         </div>
 
-        <ConnectivityWatcher />
         <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} commands={commands} />
         <PointerDialog open={pointer.open} dossierId={pointer.dossierId} onOpenChange={(open) => setPointer((p) => ({ ...p, open }))} />
         <DossierFormDialog
@@ -287,22 +290,21 @@ export function SuivixLayout({ children }: { children: ReactNode }) {
                 agentId: values.agentId,
                 dueDate: values.dueDate,
                 tags: parseTagsInput(values.tags),
+                clientEmail: values.clientEmail.trim() || null,
               },
               currentMember.id
             )
             for (const a of values.attachments) addAttachment(dossier.id, a.name, a.fileType, a.size, currentMember.id)
             const pieces = values.attachments.length
             toast.success(`Dossier ${dossier.reference} enregistré${pieces ? ` avec ${pieces} pièce${pieces > 1 ? 's' : ''} jointe${pieces > 1 ? 's' : ''}` : ''}`, {
-              action: { label: 'Ouvrir', onClick: () => navigate(`/dossiers/${dossier.id}`) },
+              action: { label: 'Accusé de réception', onClick: () => setReceiptId(dossier.id) },
             })
           }}
         />
-        <PersonaSwitcherModal
-          open={personaOpen}
-          onOpenChange={setPersonaOpen}
-          members={state.members}
-          currentMemberId={currentMember.id}
-          onSelect={setCurrentMemberId}
+        <ReceiptDialog
+          dossier={state.dossiers.find((d) => d.id === receiptId) ?? null}
+          open={receiptId != null}
+          onOpenChange={(open) => !open && setReceiptId(null)}
         />
       </div>
     </ShellContext.Provider>

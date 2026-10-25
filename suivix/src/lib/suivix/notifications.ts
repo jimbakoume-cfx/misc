@@ -1,20 +1,4 @@
-import type { NotificationChannel } from './types'
-
-// "Moat" feature #1 — multi-channel alerting. In Francophone Africa, WhatsApp and SMS
-// reach people far more reliably than email, so every automated alert is simulated as
-// being delivered through the member's preferred channel instead of only in-app/email.
-
-export const CHANNEL_LABELS: Record<NotificationChannel, string> = {
-  whatsapp: 'WhatsApp',
-  sms: 'SMS',
-  email: 'Email',
-}
-
-export function deliveryLine(channel: NotificationChannel, phone: string, email: string): string {
-  if (channel === 'whatsapp') return `Envoyé via WhatsApp au ${phone}`
-  if (channel === 'sms') return `Envoyé par SMS au ${phone}`
-  return `Envoyé par email à ${email}`
-}
+// Alerts are sent by email to the member (simulated here) and listed in the notifications bell.
 
 export function craftAssignmentMessage(reference: string, title: string): string {
   return `Suivix : le dossier ${reference} (${title}) vous a été affecté.`
@@ -30,4 +14,8 @@ export function craftTaskMessage(reference: string, taskTitle: string): string {
 
 export function craftStatusMessage(reference: string, statusLabel: string): string {
   return `Suivix : le dossier ${reference} est passé au statut "${statusLabel}".`
+}
+
+export function craftReceiptMessage(company: string, reference: string, title: string, date: string): string {
+  return `${company} — accusé de réception\nVotre dossier « ${title} » a été enregistré le ${date} sous la référence ${reference}.\nCitez cette référence pour tout suivi.`
 }

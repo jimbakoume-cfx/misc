@@ -1,10 +1,13 @@
 /* Suivix brand theme — derived from the brand identity guide (direction 3a "Signature":
    royal blue #1E5AE8, deep navy #101828, light blue #B9CCF9, ivoire #F7F6F2, slate #4A5568).
-   Sora for headings & UI text, IBM Plex Mono for references/timestamps, Source Serif 4
-   Italic reserved for editorial accents (taglines, quotes). Overrides the base
+   UI text in Satoshi and editorial accents (taglines, quotes) in Sentient Italic, both from
+   Fontshare; IBM Plex Mono for references/timestamps (Fontshare has no monospace). The wordmark
+   keeps Sora, the brand guide's logo face. Overrides the base
    theme.css defaults; kept in its own file so it always wins the cascade. */
 
-@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Source+Serif+4:ital@1&family=IBM+Plex+Mono:wght@400;500&display=swap');
+@import url('https://api.fontshare.com/v2/css?f[]=satoshi@300,400,500,700&display=swap');
+@import url('https://api.fontshare.com/v2/css?f[]=sentient@401&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
 :root:root {
   /* Ivoire background, white surfaces, Encre text, Bleu Suivix reserved for action/state. */
@@ -45,9 +48,9 @@
   --shadow-retool-sm: 0 1px 2px rgba(16, 24, 40, 0.04);
   --shadow-retool-md: 0 4px 16px -4px rgba(16, 24, 40, 0.10), 0 1px 2px rgba(16, 24, 40, 0.04);
   --shadow-retool-lg: 0 20px 40px -12px rgba(16, 24, 40, 0.25);
-  --font-sans: 'Sora', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: 'Satoshi', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'IBM Plex Mono', SFMono-Regular, Consolas, monospace;
-  --font-editorial: 'Source Serif 4', Georgia, serif;
+  --font-editorial: 'Sentient', Georgia, serif;
 }
 
 :root.dark {
@@ -82,15 +85,15 @@
   --chart-5: 221 45% 95%;
 }
 
-/* Editorial accent style for taglines/quotes (Source Serif 4 Italic per the brand guide). */
+/* Editorial accent style for taglines/quotes (Sentient Italic). */
 .font-editorial {
   font-family: var(--font-editorial);
   font-style: italic;
 }
 
-/* Denser, calmer type scale: Sora runs wide, so the app is set at 15px. */
+/* Satoshi is compact, so the app is set at 15.5px for comfortable reading. */
 html {
-  font-size: 15px;
+  font-size: 15.5px;
 }
 
 ::selection {
@@ -130,4 +133,12 @@ html {
 
 @media (prefers-reduced-motion: reduce) {
   .animate-rise { animation: none; }
+}
+
+/* Printing a receipt or a QR label prints only that block (marked .print-area). */
+@media print {
+  body:has(.print-area) * { visibility: hidden; }
+  body:has(.print-area) .print-area,
+  body:has(.print-area) .print-area * { visibility: visible; }
+  body:has(.print-area) .print-area { position: fixed; left: 0; top: 0; }
 }

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-// Page title block: mono eyebrow, Sora title, optional Source Serif subtitle, actions on the right.
+// Page title block: mono eyebrow, Satoshi title, optional Sentient italic subtitle, actions on the right.
 export function PageHeader({
   eyebrow,
   title,
