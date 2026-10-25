@@ -25,7 +25,7 @@ const ENTERPRISE_FEATURES = [
   'Dossiers, pièces jointes et tâches illimités',
   "5 types de comptes : Administrateur, Directeur, Chef de service, Collaborateur, Secrétariat",
   'Tableaux de bord, KPI personnalisés et scorecards par agent',
-  'Journal d\u2019audit global sur toute l\u2019activité',
+  'Journal d’audit global sur toute l’activité',
   'Alertes multicanal WhatsApp / SMS / Email',
   'Passerelle papier ↔ digital avec étiquettes QR code',
   'Mode résilient hors-ligne avec synchronisation automatique',

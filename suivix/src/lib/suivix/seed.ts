@@ -38,7 +38,7 @@ function mulberry32(seed: number) {
 
 const CLIENTS = [
   'Ministère de la Transition Écologique',
-  'Préfecture d\u2019Abidjan',
+  'Préfecture d’Abidjan',
   'Groupe Aurex Industries',
   'Mairie de Dakar',
   'CHU de Cocody',
