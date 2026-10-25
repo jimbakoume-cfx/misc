@@ -84,15 +84,11 @@ function DirectionDashboard({ dossiers }: { dossiers: Dossier[] }) {
         <StatTile label="Échéance dépassée" value={late.length} tone="warning" hint="À relancer" to="/alertes" />
         <StatTile label="Terminés (30 j)" value={doneMonth.length} tone="success" hint="Dossiers clôturés" to="/dossiers?statut=termine" />
       </StatGrid>
-      <div className="grid grid-cols-1 gap-density-xl lg:grid-cols-5">
-        <div className="lg:col-span-2">
-          <TeamLoad members={holders} />
-        </div>
-        <div className="lg:col-span-3">
-          <UnblockList dossiers={dossiers} />
-        </div>
+      <div className="grid grid-cols-1 gap-density-xl lg:grid-cols-2 xl:grid-cols-3">
+        <TeamLoad members={holders} />
+        <UnblockList dossiers={dossiers} />
+        <ActivityFeed dossiers={dossiers} />
       </div>
-      <ActivityFeed dossiers={dossiers} />
     </>
   )
 }
@@ -195,8 +191,8 @@ function CollaborateurDashboard({ dossiers, member }: { dossiers: Dossier[]; mem
                         <span className="mt-1 h-3 w-3 shrink-0 border border-muted-foreground/50" />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-medium">{t.title}</span>
-                          <span className="block truncate font-mono text-[0.65rem] uppercase text-muted-foreground">
-                            {d?.reference} {t.dueDate ? `· ${formatDate(t.dueDate)}` : ''}
+                          <span className="block truncate text-xs text-muted-foreground">
+                            <span className="ref">{d?.reference}</span> {t.dueDate ? `· ${formatDate(t.dueDate)}` : ''}
                           </span>
                         </span>
                       </Link>
@@ -308,8 +304,8 @@ function StatTile({ label, value, hint, tone, to }: { label: string; value: numb
   const color = tone === 'destructive' ? 'text-destructive' : tone === 'warning' ? 'text-warning' : tone === 'success' ? 'text-success' : 'text-foreground'
   const body = (
     <>
-      <p className={`eyebrow text-[0.6rem] ${tone ? color : 'text-muted-foreground'}`}>{label}</p>
-      <p className={`mt-2 text-[2rem] font-light leading-none tabular-nums ${color}`}>{value}</p>
+      <p className="text-sm font-medium text-muted-foreground">{label}</p>
+      <p className={`mt-2 text-[2.25rem] font-bold leading-none tracking-tight tabular-nums ${color}`}>{value}</p>
       <p className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
         {hint}
         {to && <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />}
@@ -364,7 +360,7 @@ function TeamLoad({ members }: { members: Member[] }) {
                 <div className="mb-1.5 flex items-center gap-2.5">
                   <MemberAvatar name={m.name} color={m.color} size="sm" />
                   <span className="min-w-0 flex-1 truncate text-sm font-medium">{m.name}</span>
-                  <span className="font-mono text-xs text-muted-foreground">
+                  <span className="text-xs text-muted-foreground">
                     {open} actif{open > 1 ? 's' : ''}
                     {sc.bloque > 0 && <span className="text-destructive"> · {sc.bloque} bloqué{sc.bloque > 1 ? 's' : ''}</span>}
                   </span>
@@ -384,7 +380,7 @@ function UnblockList({ dossiers }: { dossiers: Dossier[] }) {
   const items = dossiers
     .filter((d) => d.status === 'bloque' || d.status === 'en_attente')
     .sort((a, b) => daysSince(b.updatedAt) - daysSince(a.updatedAt))
-    .slice(0, 5)
+    .slice(0, 6)
   return (
     <Card className="h-full">
       <CardHeader className="flex-row items-center justify-between">
@@ -395,24 +391,30 @@ function UnblockList({ dossiers }: { dossiers: Dossier[] }) {
           Toutes les alertes
         </Link>
       </CardHeader>
-      <CardContent className="space-y-density-sm">
+      <CardContent>
         {items.length === 0 ? (
           <EmptyState icon={<CheckCircle2 className="h-5 w-5" />} title="Aucun dossier bloqué" description="Tout circule normalement." />
         ) : (
-          items.map((d) => (
-            <button
-              key={d.id}
-              onClick={() => navigate(`/dossiers/${d.id}`)}
-              className={`block w-full border-l-2 bg-muted/40 px-density-md py-2.5 text-left transition-colors hover:bg-muted ${d.status === 'bloque' ? 'border-destructive' : 'border-warning'}`}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="ref text-[0.65rem] text-muted-foreground">{d.reference}</span>
-                <span className={`font-mono text-[0.65rem] ${d.status === 'bloque' ? 'text-destructive' : 'text-warning'}`}>Inactif {daysSince(d.updatedAt)} j</span>
-              </div>
-              <p className="truncate text-sm font-medium">{d.title}</p>
-              <p className="truncate text-xs text-muted-foreground">{d.blockReason ?? `${STATUS_CONFIG[d.status].label} · ${d.client}`}</p>
-            </button>
-          ))
+          <ul className="-mx-1.5 divide-y divide-border">
+            {items.map((d) => (
+              <li key={d.id}>
+                <button
+                  onClick={() => navigate(`/dossiers/${d.id}`)}
+                  title={d.blockReason ?? `${STATUS_CONFIG[d.status].label} · ${d.client}`}
+                  className="flex w-full items-center gap-2.5 rounded-md px-1.5 py-2 text-left transition-colors hover:bg-muted/60"
+                >
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${d.status === 'bloque' ? 'bg-destructive' : 'bg-warning'}`} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">{d.title}</span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      <span className="ref">{d.reference}</span> · {d.blockReason ?? STATUS_CONFIG[d.status].label}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{daysSince(d.updatedAt)} j</span>
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
       </CardContent>
     </Card>
@@ -460,7 +462,7 @@ function ActivityFeed({ dossiers, types, title = 'Activité récente' }: { dossi
   const events = state.history
     .filter((h) => ids.has(h.dossierId) && (!types || types.includes(h.type)))
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    .slice(0, 7)
+    .slice(0, 6)
   return (
     <Card className="h-full">
       <CardHeader>
@@ -482,8 +484,8 @@ function ActivityFeed({ dossiers, types, title = 'Activité récente' }: { dossi
                   <Link to={`/dossiers/${h.dossierId}`} className="block hover:text-primary">
                     <p className="text-sm leading-snug">{h.description}</p>
                   </Link>
-                  <p className="mt-0.5 font-mono text-[0.65rem] uppercase text-muted-foreground">
-                    {d?.reference} · {formatDateTime(h.date)}
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    <span className="ref">{d?.reference}</span> · {formatDateTime(h.date)}
                     {author ? ` · ${author.name}` : ''}
                   </p>
                 </li>

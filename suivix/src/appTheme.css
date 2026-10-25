@@ -101,12 +101,11 @@ html {
   color: hsl(222 81% 40%);
 }
 
-/* Small mono eyebrow used above titles and as table headings (brand "surtitre"). */
+/* Small eyebrow used above titles and as table headings (brand "surtitre"). Mono is kept for references. */
 .eyebrow {
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-  font-weight: 500;
-  letter-spacing: 0.14em;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 

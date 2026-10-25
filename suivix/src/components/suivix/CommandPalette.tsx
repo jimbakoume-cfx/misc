@@ -100,7 +100,7 @@ export function CommandPalette({ open, onOpenChange, commands }: { open: boolean
                 <span className={i === active ? 'text-primary' : 'text-muted-foreground'}>{item.icon}</span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{item.label}</span>
-                  {item.hint && <span className="block truncate font-mono text-[0.7rem] uppercase text-muted-foreground">{item.hint}</span>}
+                  {item.hint && <span className="block truncate text-xs text-muted-foreground">{item.hint}</span>}
                 </span>
                 {item.status && <StatusBadge status={item.status} />}
                 {i === active ? <CornerDownLeft className="h-3.5 w-3.5 text-muted-foreground" /> : <ArrowRight className="h-3.5 w-3.5 text-transparent" />}

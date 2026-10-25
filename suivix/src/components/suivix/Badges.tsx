@@ -3,7 +3,7 @@ import { Badge } from '../../lib/shadcn/badge'
 import type { DossierStatus, Priority, Role } from '../../lib/suivix/types'
 import { AVATAR_COLOR_CLASSES, PRIORITY_CONFIG, ROLE_CONFIG, STATUS_CONFIG, initials } from '../../lib/suivix/utils'
 
-// Brand "pastilles de statut": a square dot plus a mono uppercase label on a tinted ground.
+// Brand "pastilles de statut": a square dot plus a short label on a tinted ground.
 // The three functional colours (validation, attente, rejet) are reserved for states.
 const STATUS_TONE: Record<DossierStatus, { pill: string; dot: string }> = {
   nouveau: { pill: 'bg-accent text-accent-foreground', dot: 'bg-primary/60' },
@@ -16,7 +16,7 @@ const STATUS_TONE: Record<DossierStatus, { pill: string; dot: string }> = {
 export function StatusBadge({ status }: { status: DossierStatus }) {
   const tone = STATUS_TONE[status]
   return (
-    <span className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded px-2 py-1 font-mono text-[0.65rem] font-medium uppercase tracking-wider ${tone.pill}`}>
+    <span className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded px-2 py-0.5 text-xs font-medium ${tone.pill}`}>
       <span className={`h-1.5 w-1.5 shrink-0 ${tone.dot}`} aria-hidden="true" />
       {STATUS_CONFIG[status].label}
     </span>

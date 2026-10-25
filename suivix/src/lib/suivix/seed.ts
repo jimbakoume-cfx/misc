@@ -94,10 +94,10 @@ const PHYSICAL_LOCATIONS = [
 
 const STATUS_WEIGHTS: { status: DossierStatus; weight: number }[] = [
   { status: 'nouveau', weight: 3 },
-  { status: 'en_cours', weight: 5 },
-  { status: 'en_attente', weight: 3 },
-  { status: 'bloque', weight: 2 },
-  { status: 'termine', weight: 5 },
+  { status: 'en_cours', weight: 7 },
+  { status: 'en_attente', weight: 2 },
+  { status: 'bloque', weight: 1 },
+  { status: 'termine', weight: 6 },
 ]
 
 const PRIORITIES: Priority[] = ['basse', 'normale', 'haute', 'urgente']
@@ -161,9 +161,7 @@ export const COMPANY_SEEDS: CompanySeedConfig[] = [
 ]
 
 function isoDaysFromNow(days: number): string {
-  const d = new Date()
-  d.setDate(d.getDate() + days)
-  return d.toISOString()
+  return new Date(Date.now() + days * 86_400_000).toISOString()
 }
 
 export function buildSeedState(config: CompanySeedConfig, companyId: string): SuivixState {
@@ -200,7 +198,7 @@ export function buildSeedState(config: CompanySeedConfig, companyId: string): Su
   }
 
   const members: Member[] = config.members.map((m) => ({ ...m, id: nextId('mem'), createdAt: isoDaysFromNow(-Math.floor(rand() * 500) - 60) }))
-  const agents = members.filter((m) => m.role === 'collaborateur' || m.role === 'chef_service')
+  const agents = members.filter((m) => m.status === 'actif' && (m.role === 'collaborateur' || m.role === 'chef_service'))
   const activeMembers = members.filter((m) => m.status === 'actif')
 
   const dossiers: Dossier[] = []
@@ -216,10 +214,13 @@ export function buildSeedState(config: CompanySeedConfig, companyId: string): Su
     const updatedDaysAgo =
       status === 'termine'
         ? Math.floor(rand() * createdDaysAgo)
-        : Math.floor(rand() * Math.min(createdDaysAgo, 40))
-    const updatedAt = isoDaysFromNow(-updatedDaysAgo)
+        : (status === 'bloque' || status === 'en_attente') && rand() > 0.5
+          ? Math.min(createdDaysAgo, 8 + Math.floor(rand() * 10))
+          : Math.floor(rand() * Math.min(createdDaysAgo, 5))
+    // Spread movements over working hours instead of stamping them all "now".
+    const updatedAt = isoDaysFromNow(-updatedDaysAgo - 0.05 - rand() * 0.3)
     const assignedAgent = rand() > 0.06 ? pick(agents.length > 0 ? agents : activeMembers) : null
-    const dueOffset = Math.floor(rand() * 60) - 20
+    const dueOffset = rand() > 0.12 ? Math.floor(rand() * 40) + 4 : -Math.floor(rand() * 6) - 1
     const dossierId = nextId('dos')
     const reference = `SVX-${new Date().getFullYear()}-${(i + 101).toString().padStart(4, '0')}`
 
