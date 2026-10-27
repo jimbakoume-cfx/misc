@@ -1,0 +1,405 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens, copied from the live console's stylesheet (dashboard.confiance-app.com).
+ * Every page sizes itself from these: column widths of each table, figure sizes, paddings.
+ * A wider screen (1920px+) gets the roomier set below.
+ */
+:root {
+  --navy:#081951;
+  --green:#004d40;
+  --white:#fff;
+  --screen:#f4f7f5;
+  --card-bg:#fff;
+  --tint:#08195108;
+  --green12:#004d401f;
+  --green30:#004d404d;
+  --green40:#004d4066;
+  --chart-1:#081951;
+  --chart-2:#081951c7;
+  --chart-3:#08195199;
+  --chart-4:#08195170;
+  --chart-5:#0819514d;
+  --chart-6:#0819512e;
+  --warn12:#96681c1f;
+  --danger12:#a6403c1f;
+  --map:#e6eaea;
+  --ink:#081951;
+  --muted-ink:#081951c7;
+  --muted2:#081951b3;
+  --faint:#081951a8;
+  --hairline:#08195114;
+  --surface-quiet:#0819510f;
+  --quiet-border:#08195129;
+  --scrim:#0819514d;
+  --field:#08195124;
+  --warn:#96681c;
+  --danger:#a6403c;
+  --rail-ink:#fff;
+  --rail-ink-quiet:#ffffffc7;
+  --rail-label:#ffffff9e;
+  --rail-active:#ffffff1a;
+  --rail-divider:#ffffff1f;
+  --font-display:var(--font-cormorant), Georgia, serif;
+  --font-label:var(--font-jost), system-ui, sans-serif;
+  --font-body:var(--font-dm-sans), system-ui, sans-serif;
+  --font-mono:var(--font-plex-mono), ui-monospace, monospace;
+  --radius-card:12px;
+  --radius-panel:10px;
+  --radius-control:8px;
+  --radius-button:7px;
+  --radius-chip:4px;
+  --rail-w:236px;
+  --rail-item-h:30px;
+  --rail-group-pad:5px 20px 2px;
+  --rail-logo-h:24px;
+  --rail-head-pad:16px 20px 14px;
+  --fs-wordmark:12px;
+  --content-pad:20px 24px 22px;
+  --content-pad-top:20px;
+  --card-gap:8px;
+  --section-gap:12px;
+  --filter-h:34px;
+  --button-h:32px;
+  --tab-h:33px;
+  --row-min-h:50px;
+  --fs-page-title:28px;
+  --fs-card-title:18px;
+  --fs-figure-hero:44px;
+  --fs-figure-tile:27px;
+  --fs-figure-cell:17px;
+  --fs-eyebrow:10px;
+  --fs-eyebrow-sm:9.5px;
+  --fs-control:13px;
+  --fs-chip:10px;
+  --fs-body:13px;
+  --fs-cell:12.5px;
+  --fs-cell-sub:11px;
+  --fs-caption:12px;
+  --fs-mono:11px;
+  --fs-button:12px;
+  --table-pad:9px 16px;
+  --btn-pad:4px 12px;
+  --tab-pad:4px 13px;
+  --band-pad:10px 16px;
+  --band-gap:14px;
+  --band-count-gap:14px;
+  --title-mt:2px;
+  --right-col-w:396px;
+  --tile-pad:11px 13px;
+  --tile-pad-compact:11px 13px;
+  --fs-tile-label:11.5px;
+  --fs-tile-sub:10.5px;
+  --list-row-pad:9px 16px;
+  --fs-list-label:13px;
+  --fs-list-count:18px;
+  --fs-list-chevron:12px;
+  --chart-pad:12px 14px 9px;
+  --chart-gap:4px;
+  --chart-h:96px;
+  --chart-bar-h:78px;
+  --fs-chart-label:8px;
+  --queue-w:372px;
+  --queue-row-pad:9px 12px;
+  --counter-pad:10px 12px;
+  --fs-counter-label:10px;
+  --fs-counter-figure:26px;
+  --tier-order:56px;
+  --tier-picture:64px;
+  --tier-code:132px;
+  --tier-fleet:88px;
+  --tier-switches:250px;
+  --tier-action:84px;
+  --pair-plate:132px;
+  --pair-rest:116px;
+  --pair-state:148px;
+  --pair-action:132px;
+  --fleet-plate:118px;
+  --fleet-class:100px;
+  --fleet-papers:200px;
+  --fleet-road:122px;
+  --fleet-action:84px;
+  --fs-plate:13px;
+  --doc-whose:180px;
+  --doc-which:132px;
+  --doc-number:92px;
+  --doc-expires:100px;
+  --doc-action:176px;
+  --ally-row-h:62px;
+  --ally-check:32px;
+  --ally-ally:158px;
+  --ally-badge:82px;
+  --ally-phone:116px;
+  --ally-city:96px;
+  --ally-tier:106px;
+  --ally-rating:74px;
+  --ally-state:142px;
+  --ally-trips:70px;
+  --rdr-rider:166px;
+  --rdr-member:78px;
+  --rdr-phone:128px;
+  --rdr-loyalty:92px;
+  --rdr-city:88px;
+  --rdr-identity:88px;
+  --rdr-trips:64px;
+  --rdr-wallet:92px;
+  --rdr-lasttrip:118px;
+  --eos-waiting:60px;
+  --eos-car:100px;
+  --eos-action:82px;
+  --eos-gap:12px;
+  --eos-row-h:52px;
+  --eos-row-pad:10px 16px;
+  --unfiled-owed:88px;
+  --unfiled-ended:124px;
+  --unfiled-can-work:96px;
+  --unfiled-action:106px;
+  --trip-when:132px;
+  --trip-trip:72px;
+  --trip-status:118px;
+  --trip-type:82px;
+  --trip-tier:100px;
+  --trip-ally:142px;
+  --trip-charged:116px;
+  --trip-payment:132px;
+  --trip-payment-gutter:12px;
+  --filter-gap:7px;
+  --tf-search:176px;
+  --tf-status:142px;
+  --tf-type:112px;
+  --tf-tier:120px;
+  --tf-fare:94px;
+  --tf-date:152px;
+  --fs-charged:17px;
+  --af-search:196px;
+  --af-city:126px;
+  --af-tier:112px;
+  --af-rating:116px;
+  --af-activity:130px;
+  --af-trips:100px;
+  --background:var(--screen);
+  --foreground:var(--ink);
+  --card:var(--card-bg);
+  --card-foreground:var(--ink);
+  --popover:var(--card-bg);
+  --popover-foreground:var(--ink);
+  --primary:var(--navy);
+  --primary-foreground:var(--white);
+  --secondary:var(--tint);
+  --secondary-foreground:var(--ink);
+  --muted:var(--tint);
+  --muted-foreground:var(--muted2);
+  --accent:var(--tint);
+  --accent-foreground:var(--ink);
+  --destructive:var(--danger);
+  --destructive-foreground:var(--white);
+  --border:var(--hairline);
+  --input:var(--field);
+  --ring:var(--navy);
+  --radius:.5rem;
+}
+
+@media (min-width: 1920px) {
+  :root {
+    --rail-w:260px;
+    --rail-item-h:34px;
+    --rail-group-pad:12px 20px 4px;
+    --rail-logo-h:27px;
+    --rail-head-pad:20px 20px 16px;
+    --fs-wordmark:13px;
+    --content-pad:26px 32px 30px;
+    --content-pad-top:26px;
+    --card-gap:10px;
+    --section-gap:14px;
+    --filter-h:38px;
+    --button-h:34px;
+    --tab-h:36px;
+    --row-min-h:54px;
+    --fs-page-title:34px;
+    --fs-card-title:19px;
+    --fs-figure-hero:52px;
+    --fs-figure-tile:32px;
+    --fs-figure-cell:19px;
+    --fs-eyebrow:11px;
+    --fs-eyebrow-sm:10px;
+    --fs-control:13px;
+    --fs-chip:10.5px;
+    --fs-body:14px;
+    --fs-cell:13px;
+    --fs-cell-sub:11.5px;
+    --fs-caption:12.5px;
+    --fs-mono:11.5px;
+    --fs-button:12.5px;
+    --table-pad:10px 18px;
+    --btn-pad:4px 13px;
+    --tab-pad:4px 15px;
+    --band-pad:12px 18px;
+    --band-gap:18px;
+    --band-count-gap:22px;
+    --title-mt:3px;
+    --right-col-w:470px;
+    --tile-pad:14px 16px;
+    --tile-pad-compact:14px 16px;
+    --fs-tile-label:12px;
+    --fs-tile-sub:11px;
+    --list-row-pad:13px 18px;
+    --fs-list-label:14px;
+    --fs-list-count:20px;
+    --fs-list-chevron:13px;
+    --chart-pad:18px 20px 14px;
+    --chart-gap:6px;
+    --chart-h:150px;
+    --chart-bar-h:128px;
+    --fs-chart-label:9px;
+    --queue-w:428px;
+    --queue-row-pad:11px 13px;
+    --counter-pad:12px 14px;
+    --fs-counter-label:10.5px;
+    --fs-counter-figure:30px;
+    --tier-order:60px;
+    --tier-picture:68px;
+    --tier-code:148px;
+    --tier-fleet:96px;
+    --tier-switches:276px;
+    --tier-action:104px;
+    --pair-plate:148px;
+    --pair-rest:132px;
+    --pair-state:168px;
+    --pair-action:152px;
+    --fleet-plate:132px;
+    --fleet-class:116px;
+    --fleet-papers:232px;
+    --fleet-road:140px;
+    --fleet-action:104px;
+    --fs-plate:14px;
+    --doc-whose:208px;
+    --doc-which:152px;
+    --doc-number:104px;
+    --doc-expires:116px;
+    --doc-action:200px;
+    --ally-check:32px;
+    --ally-ally:176px;
+    --ally-badge:92px;
+    --ally-phone:134px;
+    --ally-city:110px;
+    --ally-tier:118px;
+    --ally-rating:84px;
+    --ally-state:150px;
+    --ally-trips:78px;
+    --rdr-rider:188px;
+    --rdr-member:86px;
+    --rdr-phone:146px;
+    --rdr-loyalty:104px;
+    --rdr-city:98px;
+    --rdr-identity:126px;
+    --rdr-trips:72px;
+    --rdr-wallet:104px;
+    --rdr-lasttrip:134px;
+    --eos-waiting:68px;
+    --eos-car:116px;
+    --eos-action:92px;
+    --eos-gap:16px;
+    --eos-row-h:56px;
+    --eos-row-pad:11px 18px;
+    --unfiled-owed:100px;
+    --unfiled-ended:140px;
+    --unfiled-can-work:110px;
+    --unfiled-action:120px;
+    --trip-when:146px;
+    --trip-trip:92px;
+    --trip-status:130px;
+    --trip-type:92px;
+    --trip-tier:130px;
+    --trip-ally:164px;
+    --trip-charged:130px;
+    --trip-payment:150px;
+    --fs-charged:18px;
+    --filter-gap:8px;
+    --tf-search:258px;
+    --tf-status:164px;
+    --tf-type:128px;
+    --tf-tier:140px;
+    --tf-fare:106px;
+    --tf-date:176px;
+    --af-search:244px;
+    --af-city:146px;
+    --af-tier:128px;
+    --af-rating:134px;
+    --af-activity:150px;
+    --af-trips:116px;
+  }
+}
+
+@theme inline {
+  --color-navy: var(--navy);
+  --color-green: var(--green);
+  --color-ink: var(--ink);
+  --color-surface: var(--white);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
+  --color-navy-light: #142a72;
+}
+
+@layer base {
+  * { border-color: var(--border); }
+  html { font-feature-settings: "lnum" 1, "tnum" 1; }
+  body {
+    background: var(--screen);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: var(--fs-body);
+    -webkit-font-smoothing: antialiased;
+  }
+  button { cursor: pointer; }
+  button:disabled { cursor: not-allowed; }
+}
+
+.font-mono { font-family: var(--font-mono); }
+.font-display { font-family: var(--font-display); line-height: 1.16; }
+.font-label { font-family: var(--font-label); }
+
+/* Console shell (rail, topbar on phones), as on the live console. */
+.console-rail { align-self: flex-start; height: 100dvh; position: sticky; top: 0; }
+.filter-input::placeholder { color: #0819519e; }
+.console-inbox-rider { flex-direction: column; height: clamp(480px, 100vh - 10rem, 860px); display: flex; }
+.console-cell-label { display: none; }
+.console-topbar, .console-scrim { display: none; }
+.console-overview-columns { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; column-gap: 20px; display: grid; }
+.console-overview-columns > * + * { border-left: 1px solid var(--hairline); padding-left: 20px; }
+
+@media (max-width: 767px) {
+  .console-colhead { display: none !important; }
+  .console-cell-label { color: var(--muted2); font-size: var(--fs-cell-sub); display: inline; margin-right: 6px; }
+  .console-topbar { background: var(--navy); height: 52px; color: var(--rail-ink); z-index: 40; align-items: center; gap: 12px; padding: 0 12px; display: flex; position: fixed; top: 0; left: 0; right: 0; }
+  .console-menu-button { min-width: 44px; min-height: 44px; color: var(--rail-ink); cursor: pointer; background: 0 0; border: none; font-size: 20px; }
+  .console-topbar-name { font-family: var(--font-label); letter-spacing: 2px; text-transform: uppercase; font-weight: 500; font-size: var(--fs-wordmark); }
+  .console-rail { z-index: 60; visibility: hidden; transition: transform .18s, visibility .18s; position: fixed; top: 0; bottom: 0; left: 0; overflow-y: auto; transform: translate(-100%); }
+  .console-rail[data-open="true"] { visibility: visible; transform: none; }
+  .console-scrim[data-open="true"] { z-index: 50; background: #0a142873; display: block; position: fixed; inset: 0; }
+  .console-main { padding-top: calc(52px + var(--content-pad-top)) !important; }
+  .console-beside { flex-wrap: wrap; }
+  .console-beside > * { max-width: 100%; }
+  .console-inbox-rider { height: auto; }
+  .console-inbox-rider > .console-beside > * { height: min(560px, 75vh); }
+  .console-blocks { grid-template-columns: minmax(0, 1fr) !important; }
+  .console-overview-columns { grid-template-columns: minmax(0, 1fr); row-gap: 22px; }
+  .console-overview-columns > * + * { border-left: none; padding-left: 0; }
+  /* Table rows become stacked cards on phones. */
+  .console-row { display: flex !important; flex-wrap: wrap; column-gap: 14px; row-gap: 4px; }
+  .console-row > * { min-width: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) { .console-rail { transition: none; } }
+
+@keyframes marker-pulse { 0%, to { box-shadow: 0 0 0 3px #a6403c38; } 50% { box-shadow: 0 0 0 6px #a6403c1a; } }
+.marker-pulse { animation: 1.8s ease-in-out infinite marker-pulse; }
+
+.row-link:hover { background: var(--tint); }
+.rail-link:hover { background: var(--rail-active); }
