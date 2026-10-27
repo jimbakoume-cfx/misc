@@ -8,6 +8,7 @@ and a web dashboard shows and manages every device.
 | `android-agent/` | Kotlin Android app (kiosk launcher + device-owner policy + heartbeat agent). |
 | `supabase/` | The API (one Edge Function, `functions/kiosk`) and the Postgres migrations, including the SQL check-in functions phones call directly. |
 | `public/` | The static dashboard (French by default, English toggle). Hosted on Netlify or GitHub Pages, talks to the Supabase function. |
+| `console/` | Front-end rebuild of the operations console at dashboard.confiance-app.com (Next.js, fr/en/zh, sample data). See `console/README.md`. |
 | `releases/` | Built, signed APK(s) with checksum info. |
 | `docs/` | `DEPLOY.md` (Supabase + static hosting), `PROVISIONING.md` / `USB_SETUP.md` (set up phones), `AGENT_PROTOCOL.md` (phone ↔ server contract), `SECURITY.md`, `PRODUCT_REVIEW.md`. |
 

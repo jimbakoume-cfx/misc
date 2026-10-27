@@ -1,0 +1,31 @@
+{
+  "console": {
+    "shell": { "menu": "菜单", "operations": "运营", "signOut": "退出登录", "demo": "演示模式：示例数据，不会发送任何操作。" },
+    "nav": {
+      "groups": { "operations": "运营", "people": "人员", "fleet": "车队", "money": "资金", "growth": "产品", "admin": "管理" },
+      "overview": "总览", "map": "地图", "trips": "行程", "alerts": "警报", "support": "客服", "disputes": "争议",
+      "allies": "司机", "riders": "乘客", "companies": "企业",
+      "vehicles": "车辆", "rota": "排班", "documents": "证件",
+      "finance": "财务", "tiers": "车型与价格", "marketing": "营销",
+      "settings": "设置", "audit": "日志"
+    },
+    "filters": { "reset": "清除筛选", "from": "从", "to": "至" },
+    "overview": { "eyebrow": "今天", "title": "总览" },
+    "trips": { "title": "行程" },
+    "allies": { "title": "司机" },
+    "riders": { "title": "乘客" },
+    "companies": { "title": "企业" },
+    "vehicles": { "title": "车辆" },
+    "rota": { "title": "排班" },
+    "documents": { "title": "证件" },
+    "alerts": { "title": "警报" },
+    "support": { "title": "客服" },
+    "disputes": { "title": "争议" },
+    "map": { "title": "地图" },
+    "finance": { "title": "财务" },
+    "tiers": { "title": "车型与价格" },
+    "marketing": { "title": "营销" },
+    "settings": { "title": "设置" },
+    "audit": { "title": "日志" }
+  }
+}

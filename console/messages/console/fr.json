@@ -1,0 +1,862 @@
+{
+  "console": {
+    "shell": {
+      "menu": "Menu",
+      "operations": "Opérations",
+      "signOut": "Se déconnecter",
+      "demo": "Mode démo : données d'exemple, aucune action n'est envoyée."
+    },
+    "nav": {
+      "groups": {
+        "operations": "Opérations",
+        "people": "Personnes",
+        "fleet": "Flotte",
+        "money": "Argent",
+        "growth": "Offre",
+        "admin": "Administration"
+      },
+      "overview": "Vue d'ensemble",
+      "map": "Carte",
+      "trips": "Courses",
+      "alerts": "Alertes",
+      "support": "Support",
+      "disputes": "Litiges",
+      "allies": "Alliés",
+      "riders": "Passagers",
+      "companies": "Entreprises",
+      "vehicles": "Véhicules",
+      "rota": "Planning",
+      "documents": "Documents",
+      "finance": "Finance",
+      "tiers": "Catégories et prix",
+      "marketing": "Marketing",
+      "settings": "Réglages",
+      "audit": "Journal"
+    },
+    "filters": {
+      "reset": "Effacer les filtres",
+      "from": "Du",
+      "to": "Au"
+    },
+    "setPassword": {
+      "title": "Choisissez un mot de passe",
+      "description": "Au moins 8 caractères. Il remplace l'ancien.",
+      "password": "Nouveau mot de passe",
+      "again": "Encore une fois",
+      "submit": "Enregistrer et entrer",
+      "saving": "Enregistrement…",
+      "mismatch": "Les deux mots de passe ne sont pas identiques."
+    },
+    "notFound": {
+      "title": "Page introuvable",
+      "body": "Ce lien ne mène à rien, ou l'élément a été retiré.",
+      "back": "Vue d'ensemble"
+    },
+    "overview": {
+      "eyebrow": "Aujourd'hui",
+      "title": "Vue d'ensemble",
+      "sub": "Mis à jour à {time}",
+      "tripsToday": "Courses sur 24 h",
+      "tripsTodaySub": "{done} terminées · {cancelled} annulées",
+      "revenueToday": "Encaissé sur 24 h",
+      "revenueTodaySub": "Courses terminées, tous moyens de paiement",
+      "averageWait": "Attente moyenne",
+      "averageWaitSub": "De la demande à l'arrivée de la voiture",
+      "minutes": "{n} min",
+      "tiles": {
+        "onTrip": "En course",
+        "available": "Disponibles",
+        "onBreak": "En pause",
+        "allies": "Alliés",
+        "live": "Courses en cours",
+        "liveSub": "dont {n} sans voiture",
+        "offRoad": "Hors route",
+        "vehicles": "véhicules"
+      },
+      "hourlyEyebrow": "Demande",
+      "hourlyTitle": "Courses par heure",
+      "attentionEyebrow": "À traiter",
+      "attentionTitle": "Ce qui attend quelqu'un",
+      "attention": {
+        "alerts": "Alertes ouvertes",
+        "support": "Conversations en attente",
+        "disputes": "Litiges en cours",
+        "documents": "Documents expirés ou bientôt",
+        "unfiled": "Fins de service non déclarées",
+        "approvals": "Ordres de paiement à approuver",
+        "refunds": "Remboursements demandés"
+      },
+      "citiesEyebrow": "Villes",
+      "citiesTitle": "Par ville",
+      "cityLive": "{n} en course",
+      "cityAvailable": "{n} libres",
+      "revenue14": "Encaissé, 14 derniers jours",
+      "queueEyebrow": "En direct",
+      "queueTitle": "File des courses",
+      "seeAll": "Tout voir",
+      "queueMoving": "En route",
+      "queueAlerts": "Urgences",
+      "noAllyYet": "pas encore d'Allié",
+      "alertsEyebrow": "Sécurité",
+      "alertsTitle": "Alertes"
+    },
+    "trips": {
+      "eyebrow": "Opérations",
+      "title": "Courses",
+      "count": "{n, plural, =0 {Aucune course} one {# course} other {# courses}}",
+      "search": "Référence, nom, lieu…",
+      "anyStatus": "Statut",
+      "live": "En cours (toutes)",
+      "anyType": "Type",
+      "anyTier": "Catégorie",
+      "anyFare": "Prix",
+      "cols": {
+        "when": "Demandée",
+        "trip": "Course",
+        "route": "Trajet",
+        "status": "Statut",
+        "type": "Type",
+        "tier": "Catégorie",
+        "ally": "Allié",
+        "charged": "Facturé",
+        "payment": "Paiement"
+      },
+      "empty": "Aucune course ne correspond à ces filtres.",
+      "showing": "{from}–{to} sur {total}"
+    },
+    "trip": {
+      "title": "Course {ref}",
+      "reassign": "Confier à un autre Allié",
+      "cancel": "Annuler la course",
+      "cancelConfirm": "Annuler cette course ? Le passager est prévenu.",
+      "refund": "Rembourser",
+      "waitingLabel": "Sans voiture",
+      "waitingBody": "Cette course attend toujours une voiture. Confiez-la à un Allié disponible de la même catégorie, ou plus haute.",
+      "route": "Trajet",
+      "pickup": "Départ",
+      "dropoff": "Arrivée",
+      "minutes": "{n} min",
+      "timeline": "Déroulé",
+      "steps": {
+        "requested": "Demandée",
+        "assigned": "Confiée à un Allié",
+        "arrived": "Allié arrivé",
+        "started": "Passager à bord",
+        "completed": "Terminée",
+        "cancelled": "Annulée"
+      },
+      "fare": "Prix",
+      "base": "Prise en charge",
+      "distance": "Distance ({km} km)",
+      "time": "Temps ({n} min)",
+      "quoted": "Prix annoncé",
+      "charged": "Facturé",
+      "payment": "Paiement",
+      "cancelReason": "Motif d'annulation",
+      "rider": "Passager",
+      "ally": "Allié",
+      "name": "Nom",
+      "phone": "Téléphone",
+      "company": "Entreprise",
+      "rating": "Note donnée",
+      "badge": "Matricule",
+      "vehicle": "Voiture",
+      "noAlly": "Aucun Allié n'a encore cette course.",
+      "meta": "Repères",
+      "requestedAt": "Demandée le",
+      "wait": "Attente"
+    },
+    "allies": {
+      "eyebrow": "Personnes",
+      "title": "Alliés",
+      "count": "{n, plural, =0 {Aucun Allié} one {# Allié} other {# Alliés}}",
+      "search": "Nom, matricule, tél.…",
+      "anyCity": "Ville",
+      "anyTier": "Catégorie",
+      "anyRating": "Note",
+      "anyActivity": "Activité",
+      "anyTrips": "Courses",
+      "noTripsThisMonth": "Aucune ce mois-ci",
+      "over100": "Plus de 100 ce mois-ci",
+      "cols": {
+        "ally": "Allié",
+        "badge": "Matricule",
+        "phone": "Téléphone",
+        "city": "Ville",
+        "tier": "Catégorie",
+        "rating": "Note",
+        "state": "État",
+        "trips": "Courses"
+      },
+      "fatigue": "Fatigue",
+      "thisMonth": "{n} ce mois",
+      "empty": "Aucun Allié ne correspond à ces filtres."
+    },
+    "ally": {
+      "message": "Envoyer un message",
+      "suspend": "Suspendre",
+      "suspendConfirm": "Suspendre cet Allié ? Il ne recevra plus de courses.",
+      "reinstate": "Rétablir",
+      "fatigueLabel": "Alerte de fatigue",
+      "fatigueBody": "Cet Allié a une alerte de fatigue ouverte : il ne peut pas recevoir de course tant qu'elle n'est pas levée.",
+      "rating": "Note",
+      "acceptance": "Acceptation",
+      "tripsMonth": "Courses ce mois",
+      "tripsTotal": "{n} au total",
+      "earnings": "Gains ce mois",
+      "cols": {
+        "when": "Demandée",
+        "trip": "Course",
+        "route": "Trajet",
+        "status": "Statut",
+        "charged": "Facturé"
+      },
+      "noTrips": "Aucune course récente.",
+      "documents": "Documents",
+      "profile": "Fiche",
+      "phone": "Téléphone",
+      "city": "Ville",
+      "tier": "Catégorie",
+      "role": "Place",
+      "joined": "Arrivé le",
+      "lastActive": "Vu",
+      "vehicle": "Voiture",
+      "plate": "Plaque",
+      "model": "Modèle",
+      "pairedWith": "Binôme",
+      "pairCount": "{n, plural, one {# autre Allié} other {# autres Alliés}}",
+      "noVehicle": "Aucune voiture attribuée."
+    },
+    "riders": {
+      "eyebrow": "Personnes",
+      "title": "Passagers",
+      "count": "{n, plural, =0 {Aucun passager} one {# passager} other {# passagers}}",
+      "search": "Nom, téléphone, e-mail…",
+      "anyCity": "Ville",
+      "anyLoyalty": "Fidélité",
+      "anyIdentity": "Identité",
+      "anyStatus": "Statut",
+      "cols": {
+        "rider": "Passager",
+        "member": "Membre depuis",
+        "phone": "Téléphone",
+        "loyalty": "Fidélité",
+        "city": "Ville",
+        "identity": "Identité",
+        "trips": "Courses",
+        "wallet": "Portefeuille",
+        "lastTrip": "Dernière course"
+      },
+      "empty": "Aucun passager ne correspond à ces filtres."
+    },
+    "rider": {
+      "since": "membre depuis le {date}",
+      "credit": "Créditer le portefeuille",
+      "verify": "Valider l'identité",
+      "deactivate": "Désactiver",
+      "deactivateConfirm": "Désactiver ce compte passager ?",
+      "reactivate": "Réactiver",
+      "debtLabel": "Portefeuille débiteur",
+      "debtBody": "Ce passager doit {amount} : sa prochaine course réglera d'abord cette dette.",
+      "wallet": "Portefeuille",
+      "trips": "Courses",
+      "loyalty": "Fidélité",
+      "recentSpend": "Dépensé récemment",
+      "recentSpendSub": "sur {n} courses",
+      "cols": {
+        "when": "Demandée",
+        "trip": "Course",
+        "route": "Trajet",
+        "status": "Statut",
+        "charged": "Facturé",
+        "payment": "Paiement"
+      },
+      "noTrips": "Aucune course.",
+      "profile": "Fiche",
+      "phone": "Téléphone",
+      "email": "E-mail",
+      "identity": "Identité",
+      "company": "Entreprise"
+    },
+    "companies": {
+      "eyebrow": "Personnes",
+      "title": "Entreprises",
+      "count": "{n, plural, =0 {Aucune entreprise} one {# entreprise} other {# entreprises}}",
+      "search": "Nom, numéro de compte…",
+      "cols": {
+        "name": "Entreprise",
+        "account": "Compte",
+        "city": "Ville",
+        "billing": "Facturation",
+        "position": "Dû ou solde",
+        "riders": "Passagers",
+        "spend": "Ce mois",
+        "status": "État"
+      },
+      "ofLimit": "sur {limit}",
+      "prepaidLeft": "solde prépayé",
+      "tripsN": "{n} courses",
+      "empty": "Aucune entreprise."
+    },
+    "company": {
+      "topUp": "Recharger le solde",
+      "changeLimit": "Changer la limite",
+      "suspend": "Suspendre",
+      "suspendConfirm": "Suspendre cette entreprise ? Ses passagers ne pourront plus réserver à son compte.",
+      "reinstate": "Rétablir",
+      "owed": "Dû",
+      "usedOfLimit": "{pct} % de la limite de {limit}",
+      "prepaid": "Solde prépayé",
+      "spend": "Dépensé ce mois",
+      "tripsN": "{n} courses",
+      "riders": "Passagers",
+      "cols": {
+        "number": "Facture",
+        "period": "Période",
+        "issued": "Émise le",
+        "amount": "Montant",
+        "status": "État"
+      },
+      "noInvoices": "Aucune facture.",
+      "account": "Compte",
+      "billing": "Facturation",
+      "billingEmail": "E-mail de facturation",
+      "since": "Client depuis"
+    },
+    "vehicles": {
+      "eyebrow": "Flotte",
+      "title": "Véhicules",
+      "count": "{n, plural, =0 {Aucun véhicule} one {# véhicule} other {# véhicules}}",
+      "search": "Plaque, modèle, châssis…",
+      "anyCity": "Ville",
+      "anyTier": "Catégorie",
+      "anyRoad": "Route",
+      "anyPapers": "Papiers",
+      "papersDue": "À renouveler (30 j)",
+      "cols": {
+        "plate": "Plaque",
+        "model": "Modèle",
+        "class": "Catégorie",
+        "papers": "Papiers",
+        "road": "Route",
+        "odometer": "Compteur"
+      },
+      "papersOk": "À jour",
+      "expired": "expiré",
+      "inDays": "{n} j",
+      "empty": "Aucun véhicule ne correspond à ces filtres."
+    },
+    "vehicle": {
+      "offRoad": "Mettre hors route",
+      "offRoadConfirm": "Mettre cette voiture hors route ? Ses Alliés ne pourront plus prendre de course avec.",
+      "onRoad": "Remettre sur la route",
+      "odometer": "Compteur",
+      "lastService": "Dernier entretien",
+      "crew": "Équipage",
+      "crewSub": "Alliés sur cette voiture",
+      "papers": "Papiers",
+      "expired": "Expiré",
+      "inDays": "Dans {n} j",
+      "identity": "Identité",
+      "vin": "Châssis",
+      "year": "Année",
+      "colour": "Couleur",
+      "class": "Catégorie",
+      "restDay": "Jour de repos"
+    },
+    "rota": {
+      "eyebrow": "Flotte",
+      "title": "Planning",
+      "sub": "Une voiture, un binôme d'Alliés, un jour de repos par semaine.",
+      "tabs": {
+        "pairs": "Binômes",
+        "eos": "Fins de service",
+        "unfiled": "Non déclarées"
+      },
+      "cols": {
+        "plate": "Voiture",
+        "crew": "Alliés",
+        "rest": "Repos",
+        "state": "État",
+        "waiting": "Attente",
+        "ally": "Allié",
+        "car": "Voiture",
+        "odometer": "Compteur",
+        "owed": "Dû",
+        "ended": "Fin",
+        "canWork": "Peut rouler"
+      },
+      "titulaire": "Titulaire",
+      "relief": "Relève",
+      "emptySeat": "Place libre",
+      "replace": "Remplacer",
+      "eosHelp": "Les Alliés qui rentrent attendent qu'on relève le compteur et l'argent de la journée. Clôturez la fin de service une fois la voiture vérifiée.",
+      "close": "Clôturer",
+      "file": "Déclarer",
+      "yes": "Oui",
+      "no": "Non"
+    },
+    "documents": {
+      "eyebrow": "Flotte",
+      "title": "Documents",
+      "sub": "Permis, pièces d'identité, assurances, vignettes et visites techniques.",
+      "tabs": {
+        "attention": "À traiter",
+        "all": "Tous"
+      },
+      "cols": {
+        "whose": "De qui",
+        "which": "Document",
+        "number": "Numéro",
+        "expires": "Expire",
+        "state": "État"
+      },
+      "ally": "Allié",
+      "vehicle": "Véhicule",
+      "daysAgo": "il y a {n} j",
+      "inDays": "dans {n} j",
+      "approve": "Valider",
+      "remind": "Relancer",
+      "empty": "Rien à traiter."
+    },
+    "alerts": {
+      "eyebrow": "Opérations",
+      "title": "Alertes",
+      "sub": "SOS, fatigue, voitures hors ligne, papiers, dettes et signalements des Alliés.",
+      "emailSettings": "Alertes par e-mail",
+      "tabs": {
+        "active": "En cours",
+        "closed": "Closes",
+        "all": "Toutes"
+      },
+      "acknowledge": "Prendre en charge",
+      "close": "Clore",
+      "empty": "Aucune alerte."
+    },
+    "support": {
+      "eyebrow": "Opérations",
+      "title": "Support",
+      "sub": "WhatsApp, application, téléphone et e-mail, au même endroit.",
+      "tabs": {
+        "all": "Toutes"
+      },
+      "unassigned": "personne",
+      "take": "Prendre",
+      "closeConversation": "Clore",
+      "customer": "Client",
+      "name": "Nom",
+      "phone": "Téléphone",
+      "identity": "Identité",
+      "wallet": "Portefeuille",
+      "trips": "Courses",
+      "trip": "Course concernée",
+      "ref": "Référence",
+      "route": "Trajet",
+      "charged": "Facturé",
+      "status": "Statut",
+      "identifyFirst": "Identifiez d'abord le client.",
+      "empty": "Aucune conversation.",
+      "placeholder": "Répondre…",
+      "send": "Envoyer",
+      "sent": "Envoyé"
+    },
+    "disputes": {
+      "eyebrow": "Opérations",
+      "title": "Litiges",
+      "sub": "Contestations de passagers sur une course.",
+      "tabs": {
+        "active": "En cours",
+        "all": "Tous"
+      },
+      "cols": {
+        "ref": "Litige",
+        "opened": "Ouvert",
+        "rider": "Passager",
+        "trip": "Course",
+        "reason": "Motif",
+        "amount": "Réclamé",
+        "assignee": "Suivi par",
+        "stage": "Étape"
+      },
+      "nobody": "Personne",
+      "empty": "Aucun litige."
+    },
+    "dispute": {
+      "title": "Litige {ref}",
+      "take": "Prendre",
+      "escalate": "Escalader",
+      "refund": "Rembourser",
+      "resolve": "Clore",
+      "case": "Dossier",
+      "opened": "Ouvert le",
+      "assignee": "Suivi par",
+      "claimed": "Réclamé",
+      "trip": "Course",
+      "route": "Trajet",
+      "charged": "Facturé",
+      "people": "Personnes",
+      "rider": "Passager",
+      "ally": "Allié"
+    },
+    "map": {
+      "eyebrow": "Opérations",
+      "title": "Carte",
+      "sub": "{n, plural, =0 {Aucun Allié en service} one {# Allié en service} other {# Alliés en service}}",
+      "onDuty": "En service"
+    },
+    "finance": {
+      "eyebrow": "Argent",
+      "title": "Finance",
+      "newOrder": "Nouvel ordre de paiement",
+      "toApprove": "À approuver",
+      "receivable": "À encaisser",
+      "invoicesN": "{n} factures",
+      "overdue": "Factures en retard",
+      "refundsRequested": "Remboursements demandés",
+      "tabs": {
+        "orders": "Ordres de paiement",
+        "invoices": "Factures entreprises",
+        "refunds": "Remboursements"
+      },
+      "cols": {
+        "ref": "Ordre",
+        "beneficiary": "Bénéficiaire",
+        "category": "Catégorie",
+        "amount": "Montant",
+        "createdBy": "Créé par",
+        "status": "État",
+        "number": "Facture",
+        "company": "Entreprise",
+        "period": "Période",
+        "issued": "Émise le",
+        "trip": "Course",
+        "rider": "Passager",
+        "reason": "Motif"
+      },
+      "approvedBy": "approuvé par {name}",
+      "approve": "Approuver",
+      "reject": "Rejeter",
+      "refuse": "Refuser",
+      "markPaid": "Marquer payé"
+    },
+    "tiers": {
+      "eyebrow": "Offre",
+      "title": "Catégories et prix",
+      "sub": "Chaque catégorie de voiture, son prix et où elle est proposée.",
+      "add": "Nouvelle catégorie",
+      "rule": "Une course n'est jamais confiée à une catégorie inférieure à celle réservée, et une catégorie ne coûte jamais plus cher que celle au-dessus d'elle.",
+      "cols": {
+        "order": "Rang",
+        "code": "Catégorie",
+        "prices": "Prix",
+        "fleet": "Voitures",
+        "switches": "Proposée pour"
+      },
+      "seats": "{n} places",
+      "minimum": "minimum {amount}",
+      "priceLine": "{base} + {km}/km + {min}/min",
+      "edit": "Modifier",
+      "switch": {
+        "rides": "Courses",
+        "rentals": "Locations",
+        "airport": "Aéroport",
+        "companies": "Entreprises"
+      }
+    },
+    "marketing": {
+      "eyebrow": "Offre",
+      "title": "Marketing",
+      "newPromo": "Nouveau code promo",
+      "newBroadcast": "Nouvelle campagne",
+      "tabs": {
+        "promos": "Codes promo",
+        "broadcasts": "Campagnes"
+      },
+      "cols": {
+        "code": "Code",
+        "value": "Avantage",
+        "uses": "Utilisations",
+        "window": "Période",
+        "state": "État",
+        "title": "Message",
+        "audience": "Destinataires",
+        "channel": "Canal",
+        "when": "Envoi",
+        "reach": "Atteints"
+      },
+      "percent": "−{n} %",
+      "fixed": "−{amount}",
+      "freeRide": "Course offerte",
+      "cap": "plafond {amount}",
+      "active": "Actif",
+      "ended": "Terminé",
+      "deactivate": "Désactiver"
+    },
+    "settings": {
+      "eyebrow": "Administration",
+      "title": "Réglages",
+      "tabs": {
+        "cities": "Villes",
+        "zones": "Zones",
+        "operators": "Opérateurs",
+        "security": "Sécurité"
+      },
+      "cols": {
+        "city": "Ville",
+        "timezone": "Fuseau",
+        "zones": "Zones",
+        "default": "Défaut",
+        "state": "État",
+        "zone": "Zone",
+        "kind": "Type",
+        "surge": "Majoration",
+        "allies": "Alliés",
+        "operator": "Opérateur",
+        "level": "Niveau",
+        "department": "Service",
+        "lastSeen": "Vu"
+      },
+      "default": "Défaut",
+      "makeDefault": "Par défaut",
+      "active": "Active",
+      "inactive": "Inactive",
+      "edit": "Modifier",
+      "invite": "Inviter un opérateur",
+      "security": {
+        "title": "Sessions",
+        "idle": "Déconnexion sans activité",
+        "idleValue": "après {n} min",
+        "session": "Retour après reconnexion",
+        "sessionValue": "à la page où l'opérateur était",
+        "password": "Réinitialisation",
+        "passwordValue": "lien par e-mail, valable une heure"
+      }
+    },
+    "audit": {
+      "eyebrow": "Administration",
+      "title": "Journal",
+      "sub": "Chaque action d'un opérateur, dans l'ordre.",
+      "search": "Opérateur, action, cible…",
+      "cols": {
+        "at": "Quand",
+        "actor": "Opérateur",
+        "action": "Action",
+        "target": "Cible",
+        "detail": "Détail"
+      },
+      "empty": "Aucune entrée."
+    },
+    "enums": {
+      "tripStatus": {
+        "searching": "Sans voiture",
+        "assigned": "Confiée",
+        "arriving": "En approche",
+        "in_progress": "En course",
+        "completed": "Terminée",
+        "cancelled": "Annulée",
+        "no_car": "Aucune voiture"
+      },
+      "tripType": {
+        "ride": "Course",
+        "airport": "Aéroport",
+        "rental": "Location",
+        "company": "Entreprise"
+      },
+      "payment": {
+        "cash": "Espèces",
+        "wallet": "Portefeuille",
+        "card": "Carte",
+        "mobile_money": "Mobile Money",
+        "company": "Compte entreprise"
+      },
+      "paymentState": {
+        "paid": "Payé",
+        "pending": "En attente",
+        "failed": "Échec",
+        "refunded": "Remboursé",
+        "partially_refunded": "Remb. partiel"
+      },
+      "cancelReason": {
+        "rider_changed_mind": "Le passager a changé d'avis",
+        "driver_late": "Allié en retard",
+        "wrong_address": "Mauvaise adresse",
+        "no_show": "Passager absent"
+      },
+      "allyState": {
+        "on_trip": "En course",
+        "available": "Disponible",
+        "on_break": "En pause",
+        "off_shift": "Hors service",
+        "suspended": "Suspendu",
+        "left": "Parti"
+      },
+      "allyRole": {
+        "titulaire": "Titulaire",
+        "relief": "Relève"
+      },
+      "loyalty": {
+        "none": "Aucune",
+        "silver": "Argent",
+        "gold": "Or",
+        "platinum": "Platine"
+      },
+      "identity": {
+        "verified": "Vérifiée",
+        "pending": "À vérifier",
+        "unverified": "Non fournie",
+        "rejected": "Refusée"
+      },
+      "riderStatus": {
+        "active": "Actif",
+        "deactivated": "Désactivé",
+        "blacklisted": "Banni"
+      },
+      "billing": {
+        "prepaid": "Prépayé",
+        "credit": "À crédit"
+      },
+      "companyStatus": {
+        "active": "Active",
+        "suspended": "Suspendue"
+      },
+      "invoiceStatus": {
+        "issued": "Émise",
+        "paid": "Payée",
+        "overdue": "En retard",
+        "void": "Annulée"
+      },
+      "road": {
+        "on_road": "Sur la route",
+        "off_road": "Hors route",
+        "in_preparation": "En préparation",
+        "left_fleet": "Sortie de flotte"
+      },
+      "docKind": {
+        "licence": "Permis",
+        "id_card": "Pièce d'identité",
+        "criminal_record": "Casier judiciaire",
+        "insurance": "Assurance",
+        "vignette": "Vignette",
+        "inspection": "Visite technique",
+        "registration": "Carte grise"
+      },
+      "docState": {
+        "valid": "Valide",
+        "expiring": "Expire bientôt",
+        "expired": "Expiré",
+        "to_review": "À vérifier"
+      },
+      "weekday": {
+        "sun": "dimanche",
+        "mon": "lundi",
+        "tue": "mardi",
+        "wed": "mercredi",
+        "thu": "jeudi",
+        "fri": "vendredi",
+        "sat": "samedi"
+      },
+      "alertKind": {
+        "sos": "SOS",
+        "fatigue": "Fatigue",
+        "offline": "Hors ligne",
+        "document_expiring": "Document",
+        "wallet_debt": "Dette",
+        "speeding": "Vitesse",
+        "driver_report": "Signalement"
+      },
+      "alertStatus": {
+        "open": "Ouverte",
+        "acknowledged": "Prise en charge",
+        "closed": "Close"
+      },
+      "severity": {
+        "high": "Urgent",
+        "medium": "Moyen",
+        "low": "Faible"
+      },
+      "conversation": {
+        "waiting": "En attente",
+        "open": "Ouvertes",
+        "closed": "Closes"
+      },
+      "channel": {
+        "whatsapp": "WhatsApp",
+        "app": "Application",
+        "phone": "Téléphone",
+        "email": "E-mail",
+        "push": "Notification",
+        "sms": "SMS"
+      },
+      "disputeStage": {
+        "open": "Ouvert",
+        "investigating": "En examen",
+        "awaiting_rider": "Attend le passager",
+        "resolved": "Clos",
+        "refunded": "Remboursé"
+      },
+      "disputeReason": {
+        "overcharged": "Trop facturé",
+        "route": "Trajet allongé",
+        "behaviour": "Comportement",
+        "lost_item": "Objet oublié",
+        "no_show": "Allié absent",
+        "payment": "Paiement"
+      },
+      "orderStatus": {
+        "draft": "Brouillon",
+        "pending_approval": "À approuver",
+        "approved": "Approuvé",
+        "paid": "Payé",
+        "rejected": "Rejeté"
+      },
+      "orderCategory": {
+        "fuel": "Carburant",
+        "maintenance": "Entretien",
+        "insurance": "Assurance",
+        "payroll": "Salaires",
+        "allowance": "Indemnités",
+        "supplies": "Fournitures"
+      },
+      "refundStatus": {
+        "requested": "Demandé",
+        "approved": "Approuvé",
+        "settled": "Versé",
+        "refused": "Refusé"
+      },
+      "audience": {
+        "riders": "Passagers",
+        "allies": "Alliés",
+        "companies": "Entreprises"
+      },
+      "broadcastStatus": {
+        "draft": "Brouillon",
+        "scheduled": "Programmée",
+        "sent": "Envoyée"
+      },
+      "zoneKind": {
+        "standard": "Standard",
+        "airport": "Aéroport",
+        "restricted": "Réservée"
+      },
+      "level": {
+        "owner": "Propriétaire",
+        "director": "Directeur",
+        "super_manager": "Super administrateur",
+        "manager": "Responsable",
+        "agent": "Agent"
+      },
+      "department": {
+        "operations": "Opérations",
+        "support": "Support",
+        "finance": "Finance",
+        "fleet": "Flotte",
+        "marketing": "Marketing"
+      },
+      "operatorStatus": {
+        "active": "Actif",
+        "invited": "Invité",
+        "suspended": "Suspendu"
+      }
+    }
+  }
+}
