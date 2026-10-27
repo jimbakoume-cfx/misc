@@ -571,7 +571,7 @@ test("the dashboard is served next to the API with security headers; settings ex
   assert.equal(page.status, 200);
   assert.match(page.res.headers.get("content-type") ?? "", /text\/html/);
   assert.match(page.res.headers.get("content-security-policy") ?? "", /script-src 'self'/);
-  assert.match(new TextDecoder().decode(page.buf!), /<title>Confiance Kiosk<\/title>/);
+  assert.match(new TextDecoder().decode(page.buf!), /<title>Confiance Console<\/title>/);
   assert.equal((await s.call("GET", "/app.js")).status, 200);
   assert.equal((await s.call("GET", "/nope.js")).status, 404);
   const st = (await s.call("GET", "/api/settings", { token: s.admin })).body;
