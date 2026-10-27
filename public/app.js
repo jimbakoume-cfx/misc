@@ -379,7 +379,7 @@ function exportCsv() {
 }
 
 // --- usage chart: 30 days of cellular (blue) and Wi-Fi (orange) per phone ---
-const CHART = { mobile: "#2a78d6", wifi: "#eb6834" };
+const CHART = { mobile: "#2440a8", wifi: "#b06a3a" };
 function usageChart(u) {
   const days = u.days ?? [];
   if (!days.length) return `<p class="hint">${t("d.data.none")}</p>`;
@@ -418,7 +418,7 @@ function drawFleetMap(all) {
   if (!el || !window.L) return;
   const pts = all.filter((d) => d.location && Number.isFinite(Number(d.location.lat)));
   const map = L.map(el, { zoomControl: true, scrollWheelZoom: false }); OSM().addTo(map);
-  const colour = (d) => d.lostMode ? "#b42318" : d.state === "online" ? "#067647" : d.state === "stale" ? "#b54708" : "#667085";
+  const colour = (d) => d.lostMode ? "#a6403c" : d.state === "online" ? "#004d40" : d.state === "stale" ? "#c58a1e" : "#08195185";
   for (const d of pts) {
     const m = L.circleMarker([Number(d.location.lat), Number(d.location.lon)], { radius: 9, color: "#fff", weight: 2, fillColor: colour(d), fillOpacity: 0.95 }).addTo(map);
     m.bindTooltip(`<b>${esc(d.driverName || d.name)}</b><br>${esc(t("state." + d.state))} · ${esc(ago(d.location.at))}`, { direction: "top", offset: [0, -8] });
@@ -454,7 +454,7 @@ function drawDeviceMap(d) {
   // images carry their own policy (origin only).
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, referrerPolicy: "strict-origin-when-cross-origin", attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>' }).addTo(map);
   const label = esc(d.driverName || d.name);
-  if (acc > 0) L.circle([lat, lon], { radius: acc, color: "#175cd3", weight: 1, fillColor: "#175cd3", fillOpacity: 0.12 }).addTo(map);
+  if (acc > 0) L.circle([lat, lon], { radius: acc, color: "#2440a8", weight: 1, fillColor: "#2440a8", fillOpacity: 0.12 }).addTo(map);
   L.marker([lat, lon], { icon: L.divIcon({ className: "locdot-wrap", html: `<span class="locdot"><i></i></span>`, iconSize: [22, 22], iconAnchor: [11, 11] }), title: label }).addTo(map)
     .bindTooltip(label, { direction: "top", offset: [0, -12] });
   if (acc > 60) map.fitBounds(L.latLng(lat, lon).toBounds(acc * 2.4), { maxZoom: 17 }); else map.setView([lat, lon], 16);
