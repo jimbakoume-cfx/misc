@@ -37,13 +37,18 @@ export default function Bienvenue() {
             ))}
           </ol>
         </div>
-        <p className="font-mono text-xs text-white/40">suivix.co</p>
+        <a href="https://suivix.co" className="w-fit font-mono text-xs text-white/50 transition-colors hover:text-white">
+          ← suivix.co
+        </a>
       </aside>
 
       <main className="flex flex-1 items-center justify-center px-5 py-10">
         <div className="animate-rise w-full max-w-md">
           <div className="mb-8 lg:hidden">
             <SuivixLogo tagline />
+            <p className="mt-5 text-lg font-semibold leading-snug tracking-tight">
+              Sachez à tout moment qui détient chaque dossier, où il se trouve et où il en est.
+            </p>
           </div>
 
           {step === 'workspaces' && (
@@ -72,14 +77,14 @@ function WorkspaceStep({ onPick, onCreate }: { onPick: (id: string) => void; onC
       <div>
         <p className="eyebrow mb-1.5 text-primary">Connexion</p>
         <h2 className="text-2xl font-semibold tracking-tight">Choisissez votre espace</h2>
-        <p className="mt-1 font-editorial text-muted-foreground">Les espaces enregistrés sur cet appareil.</p>
+        <p className="mt-1 font-editorial text-muted-foreground">Les espaces enregistrés sur cet appareil. Leurs données restent dans ce navigateur.</p>
       </div>
       <ul className="space-y-2">
         {companies.map((c) => (
           <li key={c.id}>
             <button
               onClick={() => onPick(c.id)}
-              className="group flex w-full items-center gap-3 rounded-lg border border-border bg-card p-4 text-left shadow-retool-sm transition-colors hover:border-primary/40"
+              className="group flex w-full items-center gap-3 rounded-lg border border-border bg-card p-4 text-left shadow-retool-sm transition-all hover:-translate-y-px hover:border-primary/40 hover:shadow-md"
             >
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-ink text-xs font-semibold text-white">{initials(c.name)}</span>
               <span className="min-w-0 flex-1">
@@ -92,7 +97,7 @@ function WorkspaceStep({ onPick, onCreate }: { onPick: (id: string) => void; onC
         ))}
       </ul>
       <Button variant="outline" className="w-full" onClick={onCreate}>
-        <Sparkles className="h-4 w-4" /> Créer l'espace de mon entreprise
+        <Sparkles className="h-4 w-4" /> Créer l’espace de mon entreprise
       </Button>
     </div>
   )
@@ -164,12 +169,12 @@ function CreateStep({
       )}
       <div>
         <p className="eyebrow mb-1.5 text-primary">Gratuit · Plan Découverte</p>
-        <h2 className="text-2xl font-semibold tracking-tight">Créez l'espace de votre entreprise</h2>
-        <p className="mt-1 font-editorial text-muted-foreground">Vous en serez l'administrateur et pourrez inviter votre équipe.</p>
+        <h2 className="text-2xl font-semibold tracking-tight">Créez l’espace de votre entreprise</h2>
+        <p className="mt-1 font-editorial text-muted-foreground">Vous en serez l’administrateur et pourrez inviter votre équipe. Deux minutes suffisent.</p>
       </div>
       <div className="space-y-4">
         <div className="space-y-1.5">
-          <Label htmlFor="co-name">Nom de l'entreprise</Label>
+          <Label htmlFor="co-name">Nom de l’entreprise</Label>
           <div className="relative">
             <Building2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input id="co-name" className="pl-9" value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Ex. Cabinet Mbarga & Associés" />
@@ -193,6 +198,7 @@ function CreateStep({
       <Button type="submit" className="w-full" disabled={!valid}>
         Créer mon espace <ArrowRight className="h-4 w-4" />
       </Button>
+      <p className="text-center text-xs text-muted-foreground">Indiquez un téléphone ou un email : l’un des deux suffit.</p>
     </form>
   )
 }
