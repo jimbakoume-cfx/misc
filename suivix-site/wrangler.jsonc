@@ -1,0 +1,11 @@
+{
+  // Cloudflare Workers static hosting for the Suivix website (suivix.co).
+  // No build step — deploy command: npx wrangler deploy
+  "name": "suivix-site",
+  "compatibility_date": "2026-11-01",
+  "assets": { "directory": "." },
+  "routes": [
+    { "pattern": "suivix.co", "custom_domain": true },
+    { "pattern": "www.suivix.co", "custom_domain": true }
+  ]
+}
