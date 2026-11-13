@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Suivix — Réception et suivi de dossier</title>
+<meta name="description" content="Suivix aide les PME camerounaises à savoir à tout moment qui détient chaque dossier, où il se trouve et où il en est : enregistrement, décharges signées, suivi client.">
+<meta property="og:title" content="Suivix — Réception et suivi de dossier">
+<meta property="og:description" content="Sachez à tout moment qui détient chaque dossier, où il se trouve et où il en est.">
+<meta property="og:image" content="https://suivix.co/assets/dashboard.webp">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="preconnect" href="https://api.fontshare.com">
+<link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap" rel="stylesheet">
+<link href="https://api.fontshare.com/v2/css?f[]=sentient@401&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#101828;--ink2:#1C2A44;--blue:#1E5AE8;--sky:#DCE6FB;--ivory:#F7F6F2;--line:#E4E1D8;--muted:#4A5568;--white:#fff}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:'Satoshi',system-ui,sans-serif;color:var(--ink);background:var(--ivory);font-size:17px;line-height:1.6;-webkit-font-smoothing:antialiased}
+img{max-width:100%;display:block}
+a{color:inherit}
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+.eyebrow{font-family:'IBM Plex Mono',monospace;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--blue);font-weight:500}
+.serif{font-family:'Sentient',Georgia,serif;font-style:italic;font-weight:400}
+h1,h2,h3{letter-spacing:-.02em;line-height:1.12}
+h1{font-size:clamp(36px,5.2vw,60px);font-weight:700}
+h2{font-size:clamp(28px,3.6vw,42px);font-weight:700}
+h3{font-size:21px;font-weight:700}
+section{padding:96px 0}
+.lead{font-size:19px;color:var(--muted);max-width:640px}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:13px 22px;border-radius:8px;font-weight:700;font-size:16px;text-decoration:none;transition:transform .15s,background .15s}
+.btn:hover{transform:translateY(-1px)}
+.btn-primary{background:var(--blue);color:#fff}
+.btn-primary:hover{background:#174BC7}
+.btn-ghost{border:1.5px solid currentColor}
+/* Logo */
+.logo{display:inline-flex;align-items:baseline;font-family:'Sora',sans-serif;font-size:26px;letter-spacing:-.04em;text-decoration:none;color:inherit}
+.logo b{font-weight:600}.logo i{font-style:normal;font-weight:300;color:var(--blue)}
+.logo span{width:7px;height:7px;background:var(--blue);margin-left:2px}
+/* Nav */
+nav{position:sticky;top:0;z-index:10;background:rgba(247,246,242,.88);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+nav .wrap{display:flex;align-items:center;gap:32px;height:68px}
+nav .links{display:flex;gap:28px;margin-left:auto;font-weight:500;font-size:15px}
+nav .links a{text-decoration:none;color:var(--muted)}nav .links a:hover{color:var(--ink)}
+nav .cta{display:flex;gap:10px}
+nav .btn{padding:9px 16px;font-size:15px}
+/* Hero */
+.hero{padding:72px 0 0;background:var(--ivory);overflow:hidden}
+.hero .wrap{display:flex;flex-direction:column;align-items:center;text-align:center;gap:22px}
+.hero .tag{display:flex;align-items:center;gap:12px;color:var(--muted)}
+.hero .tag::before{content:"";width:40px;height:2px;background:var(--blue)}
+.hero h1{max-width:900px}
+.hero .lead{margin:0 auto}
+.hero .actions{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:8px}
+.shot{margin-top:56px;border-radius:14px 14px 0 0;background:var(--ink);padding:10px 10px 0;box-shadow:0 40px 80px -30px rgba(16,24,40,.45);max-width:1100px}
+.shot img{border-radius:8px 8px 0 0}
+/* Rail */
+.rail{display:flex;align-items:center;justify-content:center;gap:0;margin:8px 0 0;font-family:'IBM Plex Mono',monospace;font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.rail i{display:inline-block;width:10px;height:10px;background:var(--blue);margin-right:10px}
+.rail span{display:flex;align-items:center}
+.rail span+span::before{content:"";width:48px;height:2px;background:var(--blue);margin:0 14px}
+/* Problem */
+.dark{background:var(--ink);color:var(--ivory)}
+.dark .lead{color:#B9CCF9}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+.problem .grid3{margin-top:48px}
+.problem .card{border-top:3px solid var(--blue);padding-top:22px}
+.problem .card p{color:#B9CCF9;margin-top:8px}
+.num{font-family:'IBM Plex Mono',monospace;color:#6E9BFF;font-size:14px}
+/* Steps */
+.step{display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center;padding:56px 0;border-top:1px solid var(--line)}
+.step:first-of-type{border-top:none}
+.step.rev .media{order:-1}
+.step ul{list-style:none;margin-top:20px;display:grid;gap:12px}
+.step li{padding-left:26px;position:relative;color:var(--muted)}
+.step li::before{content:"";position:absolute;left:0;top:10px;width:9px;height:9px;background:var(--blue)}
+.media{display:flex;gap:20px;justify-content:center;align-items:flex-start;background:var(--sky);border-radius:16px;padding:32px}
+.media img{border-radius:10px;box-shadow:0 20px 40px -18px rgba(16,24,40,.4);max-height:520px;width:auto}
+.phone{background:var(--ink);border-radius:30px;padding:8px}
+.phone img{border-radius:24px;box-shadow:none;max-height:520px}
+/* Roles */
+.roles{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-top:44px}
+.role{background:var(--white);border:1px solid var(--line);border-radius:12px;padding:22px}
+.role h3{font-size:18px}.role p{font-size:15px;color:var(--muted);margin-top:6px}
+/* Pricing */
+.pricing{background:var(--white)}
+.tiers{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:48px;align-items:stretch}
+.tier{border-radius:18px;padding:32px;display:flex;flex-direction:column;gap:12px;border:1px solid var(--line);background:var(--ivory)}
+.tier .top{display:flex;justify-content:space-between;align-items:center}
+.tier .name{font-family:'IBM Plex Mono',monospace;font-size:14px;letter-spacing:.14em;color:var(--muted)}
+.level{display:flex;gap:5px}.level i{width:12px;height:12px;border:2px solid #A0A8B5}.level i.on{background:var(--blue);border-color:var(--blue)}
+.tier h3{font-size:26px}
+.tier .for{color:var(--muted);font-size:15px}
+.price{font-size:44px;font-weight:700;letter-spacing:-.03em;line-height:1.1}.price small{font-size:17px;font-weight:500;color:var(--muted)}
+.tier .per{font-size:15px;color:var(--muted)}
+.tier hr{border:none;border-top:1px solid var(--line);margin:6px 0}
+.tier .inc{font-family:'IBM Plex Mono',monospace;font-size:13px;letter-spacing:.1em;color:var(--muted)}
+.tier ul{list-style:none;display:grid;gap:9px;flex:1}
+.tier li{padding-left:24px;position:relative;font-size:16px}
+.tier li::before{content:"✓";position:absolute;left:0;color:var(--blue);font-weight:700}
+.tier .train{border-radius:10px;padding:12px 14px;font-size:15px;background:var(--white)}
+.tier .btn{justify-content:center;margin-top:4px}
+.tier.mid{background:var(--ink);color:var(--ivory);border-color:var(--ink);box-shadow:0 34px 60px -24px rgba(16,24,40,.55);transform:translateY(-12px)}
+.tier.mid .name,.tier.mid .for,.tier.mid .per,.tier.mid .inc,.tier.mid .price small{color:#B9CCF9}
+.tier.mid hr{border-color:#2B3A55}.tier.mid li::before{color:#6E9BFF}.tier.mid .train{background:var(--ink2)}
+.badge{font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.1em;background:var(--blue);color:#fff;border-radius:6px;padding:4px 10px}
+.tier.top-tier{background:var(--blue);color:#fff;border-color:var(--blue)}
+.tier.top-tier .name,.tier.top-tier .for,.tier.top-tier .per,.tier.top-tier .inc,.tier.top-tier .price small{color:var(--sky)}
+.tier.top-tier hr{border-color:#5C8BF0}.tier.top-tier li::before{color:#fff}.tier.top-tier .train{background:#174BC7}
+.tier.top-tier .level i{background:#fff;border-color:#fff}
+.tier.top-tier .btn{background:#fff;color:var(--blue)}
+.note{margin-top:28px;font-size:14px;color:var(--muted);text-align:center}
+/* Setup */
+.timeline{display:grid;grid-template-columns:repeat(3,1fr);margin-top:44px}
+.timeline div{padding-right:32px}
+.timeline .bar{display:flex;align-items:center;margin-bottom:16px}.timeline .bar i{width:16px;height:16px;background:var(--blue)}.timeline .bar b{flex:1;height:2px;background:var(--blue)}
+.timeline .when{font-family:'IBM Plex Mono',monospace;font-size:13px;letter-spacing:.12em;color:var(--blue)}
+.timeline p{color:var(--muted);margin-top:6px}
+.training{margin-top:40px;background:var(--white);border-radius:12px;padding:22px 26px;display:flex;gap:24px;align-items:center;flex-wrap:wrap}
+/* Contact */
+.contact{background:var(--ink);color:var(--ivory)}
+.contact .wrap{display:grid;grid-template-columns:1.3fr 1fr;gap:64px;align-items:end}
+.contact .who{display:grid;gap:8px;font-family:'IBM Plex Mono',monospace;font-size:16px}
+.contact .who a{text-decoration:none}.contact .who a:hover{color:#B9CCF9}
+.contact .person{font-size:24px;font-weight:700;font-family:'Satoshi',sans-serif}
+.contact .role-line{color:#B9CCF9;margin-bottom:12px}
+footer{background:var(--ink);color:#8A96AD;border-top:1px solid #22304A;padding:28px 0;font-size:14px}
+footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+footer a{text-decoration:none}footer a:hover{color:#fff}
+@media (max-width:960px){
+  nav .links{display:none}
+  .grid3,.tiers,.timeline,.step,.contact .wrap{grid-template-columns:1fr}
+  .step{gap:32px}.step.rev .media{order:0}
+  .roles{grid-template-columns:1fr 1fr}
+  .tier.mid{transform:none}
+  section{padding:72px 0}
+  .media{padding:20px;flex-wrap:wrap}.media img,.phone img{max-height:420px}
+}
+@media (max-width:560px){
+  nav .cta .btn-ghost{display:none}
+  .roles{grid-template-columns:1fr}
+  .rail span+span::before{width:20px;margin:0 8px}
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="logo" href="/" aria-label="Suivix, accueil"><b>suivi</b><i>x</i><span></span></a>
+    <div class="links">
+      <a href="#fonctionnement">Fonctionnement</a>
+      <a href="#offres">Offres</a>
+      <a href="#mise-en-place">Mise en place</a>
+      <a href="#contact">Contact</a>
+    </div>
+    <div class="cta">
+      <a class="btn btn-ghost" href="https://app.suivix.co">Se connecter</a>
+      <a class="btn btn-primary" href="#contact">Demander une démo</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <p class="tag serif">Réception et suivi de dossier.</p>
+    <h1>Sachez à tout moment qui détient chaque dossier, où il se trouve et où il en est.</h1>
+    <p class="lead">Suivix remplace le cahier de transmission et les « où est le dossier ? » par trois gestes simples, pensés pour les PME camerounaises.</p>
+    <div class="actions">
+      <a class="btn btn-primary" href="https://app.suivix.co">Essayer la démo gratuite</a>
+      <a class="btn btn-ghost" href="#contact">Parler à l’équipe</a>
+    </div>
+    <div class="rail" aria-label="Enregistrer, pointer, retrouver"><span><i></i>Enregistrer</span><span>Pointer</span><span>Retrouver</span></div>
+    <div class="shot"><img src="/assets/dashboard.webp" width="1600" height="1000" alt="Tableau de bord Suivix : dossiers en circulation, bloqués, échéances, charge de l’équipe et activité récente"></div>
+  </div>
+</header>
+
+<section class="dark problem">
+  <div class="wrap">
+    <p class="eyebrow" style="color:#B9CCF9">Le constat</p>
+    <h2 style="margin-top:12px;max-width:820px">« Où est le dossier ? » — une question qui coûte des heures chaque semaine.</h2>
+    <div class="grid3">
+      <div class="card"><span class="num">01</span><h3>Dossiers introuvables</h3><p>Le papier passe de bureau en bureau sans trace. On appelle, on cherche, on attend.</p></div>
+      <div class="card"><span class="num">02</span><h3>Pièces qui manquent</h3><p>Le dossier attend une pièce du client, mais personne ne le lui a dit clairement.</p></div>
+      <div class="card"><span class="num">03</span><h3>Aucune visibilité</h3><p>La direction ne sait pas qui est surchargé, ni ce qui bloque, ni depuis quand.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="fonctionnement">
+  <div class="wrap">
+    <p class="eyebrow">Fonctionnement</p>
+    <h2 style="margin-top:12px">Trois gestes. Tout est tracé.</h2>
+
+    <div class="step">
+      <div>
+        <p class="eyebrow">01 · Enregistrer</p>
+        <h2 style="margin-top:10px;font-size:32px">Chaque dossier reçu, chaque pièce vérifiée.</h2>
+        <ul>
+          <li>Le type de dossier fixe la liste des pièces : on coche au guichet ce qui est remis.</li>
+          <li>Une référence unique suit le dossier du papier à l’écran.</li>
+          <li>Le déposant repart avec un accusé de réception : QR de suivi et pièces encore attendues.</li>
+        </ul>
+      </div>
+      <div class="media"><img src="/assets/receipt.webp" width="560" height="810" alt="Accusé de réception avec QR de suivi et pièces à transmettre" loading="lazy"></div>
+    </div>
+
+    <div class="step rev">
+      <div>
+        <p class="eyebrow">02 · Pointer</p>
+        <h2 style="margin-top:10px;font-size:32px">Chaque passage de main, signé et prouvé.</h2>
+        <ul>
+          <li>Le dossier change de main : on le pointe en quelques secondes, le destinataire est prévenu par email.</li>
+          <li>Le destinataire signe du doigt : la décharge est générée et s’imprime.</li>
+          <li>Le registre des transmissions répond à « qui l’avait, et depuis quand ? ».</li>
+        </ul>
+      </div>
+      <div class="media"><img src="/assets/pointer.webp" width="540" height="898" alt="Pointer un transfert avec signature du destinataire" loading="lazy"><img src="/assets/decharge.webp" width="620" height="877" alt="Décharge de transmission signée" loading="lazy" style="margin-top:48px"></div>
+    </div>
+
+    <div class="step">
+      <div>
+        <p class="eyebrow">03 · Retrouver</p>
+        <h2 style="margin-top:10px;font-size:32px">Le client suit son dossier, sans appeler.</h2>
+        <ul>
+          <li>Il scanne le QR de son accusé de réception et voit où en est son dossier.</li>
+          <li>Les pièces manquantes sont listées : il sait quoi apporter.</li>
+          <li>Les notes internes ne sont jamais visibles.</li>
+        </ul>
+      </div>
+      <div class="media"><div class="phone"><img src="/assets/suivi.webp" width="420" height="908" alt="Page de suivi du client sur téléphone" loading="lazy"></div></div>
+    </div>
+
+    <div class="step rev">
+      <div>
+        <p class="eyebrow">Pièces à relancer</p>
+        <h2 style="margin-top:10px;font-size:32px">Une relance précise, et le dossier repart.</h2>
+        <ul>
+          <li>Tous les dossiers en attente de pièces, au même endroit.</li>
+          <li>Un clic envoie au client la liste exacte de ce qui manque.</li>
+          <li>Chaque relance est datée dans l’historique du dossier.</li>
+        </ul>
+      </div>
+      <div class="media"><img src="/assets/relances.webp" width="1200" height="632" alt="Page Pièces à relancer" loading="lazy"></div>
+    </div>
+  </div>
+</section>
+
+<section style="padding-top:0">
+  <div class="wrap">
+    <p class="eyebrow">5 types de comptes</p>
+    <h2 style="margin-top:12px">Calqués sur l’organisation d’une PME.</h2>
+    <div class="roles">
+      <div class="role"><h3>Administrateur</h3><p>Gère le compte, les utilisateurs, les types de dossiers.</p></div>
+      <div class="role"><h3>Directeur</h3><p>Volumes, blocages, échéances et charge de l’équipe.</p></div>
+      <div class="role"><h3>Chef de service</h3><p>Répartit les dossiers et lève les blocages.</p></div>
+      <div class="role"><h3>Collaborateur</h3><p>Traite ses dossiers, signe ce qu’il reçoit.</p></div>
+      <div class="role"><h3>Secrétariat</h3><p>Enregistre, remet l’accusé, relance les clients.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="pricing" id="offres">
+  <div class="wrap">
+    <p class="eyebrow" style="text-align:center">Offres</p>
+    <h2 style="margin-top:12px;text-align:center">Trois offres, trois niveaux de maîtrise.</h2>
+    <div class="tiers">
+      <div class="tier">
+        <div class="top"><span class="name">DÉCOUVERTE</span><span class="level"><i class="on"></i><i></i><i></i></span></div>
+        <h3>Essayer sans risque</h3>
+        <p class="for">Une petite équipe, un service</p>
+        <p class="price">Gratuit</p>
+        <p class="per">Sans engagement</p>
+        <hr>
+        <p class="inc">INCLUS</p>
+        <ul><li>3 utilisateurs, 50 dossiers</li><li>Accusé de réception avec QR</li><li>Page de suivi pour le client</li><li>Alertes par email</li></ul>
+        <p class="train">Formation : tutoriels vidéo</p>
+        <a class="btn btn-ghost" href="https://app.suivix.co">Commencer</a>
+      </div>
+      <div class="tier mid">
+        <div class="top"><span class="name">ESSENTIEL</span><span class="badge">LE PLUS CHOISI</span></div>
+        <h3>Zéro dossier perdu</h3>
+        <p class="for">PME de 5 à 15 personnes</p>
+        <p class="price">49 500 <small>FCFA / mois</small></p>
+        <p class="per">≈ 1 650 FCFA par jour</p>
+        <hr>
+        <p class="inc">TOUT DÉCOUVERTE, PLUS</p>
+        <ul><li>15 utilisateurs, 5 rôles</li><li>Dossiers illimités</li><li>Pièces requises et relances</li><li>Décharges signées, registre</li><li>Import Excel, étiquettes QR</li></ul>
+        <p class="train">Formation : 2 h en ligne</p>
+        <a class="btn btn-primary" href="#contact">Choisir Essentiel</a>
+      </div>
+      <div class="tier top-tier">
+        <div class="top"><span class="name">ENTREPRISE</span><span class="level"><i class="on"></i><i class="on"></i><i class="on"></i></span></div>
+        <h3>Pilotage multi-sites</h3>
+        <p class="for">Groupes et réseaux d’agences</p>
+        <p class="price">99 500 <small>FCFA / mois</small></p>
+        <p class="per">≈ 3 300 FCFA par jour</p>
+        <hr>
+        <p class="inc">TOUT ESSENTIEL, PLUS</p>
+        <ul><li>Utilisateurs illimités</li><li>Plusieurs sites et agences</li><li>Types de dossiers sur mesure</li><li>Paramétrage accompagné</li><li>Support prioritaire</li></ul>
+        <p class="train">Formation : ½ journée sur site</p>
+        <a class="btn" href="#contact">Nous contacter</a>
+      </div>
+    </div>
+    <p class="note">Tarifs mensuels en francs CFA. Paiement par Orange Money, MTN MoMo ou virement.</p>
+  </div>
+</section>
+
+<section id="mise-en-place" style="background:var(--sky)">
+  <div class="wrap">
+    <p class="eyebrow">Mise en place et formation</p>
+    <h2 style="margin-top:12px">Opérationnel en deux semaines, équipe formée.</h2>
+    <div class="timeline">
+      <div><div class="bar"><i></i><b></b></div><p class="when">JOUR 1</p><h3>Compte et équipe</h3><p>Création du compte, invitation des utilisateurs, rôles et types de dossiers.</p></div>
+      <div><div class="bar"><i></i><b></b></div><p class="when">SEMAINE 1</p><h3>Dossiers en cours</h3><p>Import de votre registre Excel, étiquettes QR sur les chemises.</p></div>
+      <div><div class="bar"><i></i></div><p class="when">SEMAINE 2</p><h3>En régime</h3><p>Transferts pointés et signés, relances clients, premier bilan avec la direction.</p></div>
+    </div>
+    <div class="training"><span class="eyebrow">Formation</span><span><b>Session de lancement</b> · <b>ateliers par profil</b> · <b>référent interne</b> · <b>bilan à 30 jours</b> — en français, en ligne ou sur site.</span></div>
+  </div>
+</section>
+
+<section class="contact" id="contact">
+  <div class="wrap">
+    <div>
+      <p class="eyebrow" style="color:#B9CCF9">Parlons de vos dossiers</p>
+      <h2 style="margin-top:14px;font-size:clamp(30px,4vw,48px)">Une démonstration de 30 minutes, avec vos propres dossiers.</h2>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:28px">
+        <a class="btn btn-primary" href="mailto:philippe@suivix.co?subject=Demande%20de%20d%C3%A9monstration%20Suivix">Demander une démo</a>
+        <a class="btn btn-ghost" href="https://app.suivix.co">Essayer la démo en ligne</a>
+      </div>
+    </div>
+    <div class="who">
+      <span class="person">Philippe Djummo</span>
+      <span class="role-line serif" style="font-family:'Sentient',Georgia,serif">Fondateur &amp; CEO</span>
+      <a href="mailto:philippe@suivix.co">philippe@suivix.co</a>
+      <a href="tel:+237675046061">+237 675 04 60 61</a>
+      <span>Yaoundé, Cameroun</span>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>© 2026 Suivix · Réception et suivi de dossier</span>
+    <span><a href="https://app.suivix.co">Se connecter</a> · <a href="mailto:philippe@suivix.co">Contact</a></span>
+  </div>
+</footer>
+
+</body>
+</html>
