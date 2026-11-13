@@ -1,16 +1,15 @@
 import { type ReactNode, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { IconAlertTriangle as AlertTriangle, IconArrowRight as ArrowRight, IconArrowsLeftRight as ArrowRightLeft, IconCalendarTime as CalendarClock, IconCircleCheck as CheckCircle2, IconFileSpreadsheet as FileSpreadsheet, IconFolderOpen as FolderOpen, IconFolderPlus as FolderPlus, IconInbox as Inbox, IconListCheck as ListChecks, IconPrinter as Printer, IconUserPlus as UserPlus, IconUserX as UserX } from '@tabler/icons-react'
+import { IconAlertTriangle as AlertTriangle, IconArrowRight as ArrowRight, IconBan as Ban, IconCircleCheck as CircleCheck, IconClockExclamation as ClockAlert, IconFolders as Folders, IconHourglass as Hourglass, IconArrowsLeftRight as ArrowRightLeft, IconCalendarTime as CalendarClock, IconCircleCheck as CheckCircle2, IconFileSpreadsheet as FileSpreadsheet, IconFolderOpen as FolderOpen, IconFolderPlus as FolderPlus, IconInbox as Inbox, IconListCheck as ListChecks, IconPrinter as Printer, IconUserPlus as UserPlus, IconUserX as UserX } from '@tabler/icons-react'
 import { Card, CardContent, CardHeader, CardTitle } from '../lib/shadcn/card'
 import { Button } from '../lib/shadcn/button'
-import { Progress } from '../lib/shadcn/progress'
 import { useSuivix } from '../lib/suivix/context'
 import {
   computeAgentScorecard,
   daysBetween,
   daysSince,
   formatDate,
-  formatDateTime,
+  formatRelative,
   isHolderRole,
   ROLE_CONFIG,
   STATUS_CONFIG,
@@ -28,8 +27,9 @@ export default function TableauDeBord() {
   const visible = useMemo(() => visibleDossiersFor(currentMember, state.dossiers), [currentMember, state.dossiers])
   const firstName = currentMember.name.split(' ')[0]
 
+  const today = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
   const header = (subtitle: string) => (
-    <PageHeader eyebrow={`Tableau de bord · ${ROLE_CONFIG[currentMember.role].label}`} title={`Bonjour, ${firstName}`} subtitle={subtitle} />
+    <PageHeader eyebrow={`${today} · ${ROLE_CONFIG[currentMember.role].label}`} title={`Bonjour, ${firstName}`} subtitle={subtitle} />
   )
 
   switch (currentMember.role) {
@@ -37,7 +37,7 @@ export default function TableauDeBord() {
     case 'directeur':
       return (
         <div className="space-y-density-xl">
-          {header("Vue d'ensemble de l'activité de l'organisation : volumes, blocages et charge de l'équipe.")}
+          {header(attentionSummary(visible))}
           {canManageTeam(currentMember.role) && <GettingStarted />}
           <DirectionDashboard dossiers={visible} />
         </div>
@@ -45,7 +45,7 @@ export default function TableauDeBord() {
     case 'chef_service':
       return (
         <div className="space-y-density-xl">
-          {header("Pilotez votre service : répartissez les dossiers et levez les blocages.")}
+          {header(attentionSummary(visible))}
           <ServiceDashboard dossiers={visible} />
         </div>
       )
@@ -79,10 +79,10 @@ function DirectionDashboard({ dossiers }: { dossiers: Dossier[] }) {
   return (
     <>
       <StatGrid>
-        <StatTile label="Dossiers en circulation" value={active.length} hint="Voir les dossiers actifs" to="/dossiers" />
-        <StatTile label="Bloqués" value={blocked.length} tone="destructive" hint="Motif à lever" to="/dossiers?statut=bloque" />
-        <StatTile label="Échéance dépassée" value={late.length} tone="warning" hint="À relancer" to="/alertes" />
-        <StatTile label="Terminés (30 j)" value={doneMonth.length} tone="success" hint="Dossiers clôturés" to="/dossiers?statut=termine" />
+        <StatTile icon={<Folders className="h-4 w-4" />} label="En circulation" value={active.length} hint="Voir tous les dossiers actifs" to="/dossiers" />
+        <StatTile icon={<Ban className="h-4 w-4" />} label="Bloqués" value={blocked.length} tone="destructive" hint={blocked.length ? 'Lever les blocages' : 'Aucun blocage'} to="/dossiers?statut=bloque" />
+        <StatTile icon={<ClockAlert className="h-4 w-4" />} label="Échéances dépassées" value={late.length} tone="warning" hint={late.length ? 'Voir les retards' : 'Aucun retard'} to="/alertes" />
+        <StatTile icon={<CircleCheck className="h-4 w-4" />} label="Terminés ce mois" value={doneMonth.length} tone="success" hint="30 derniers jours" to="/dossiers?statut=termine" />
       </StatGrid>
       <div className="grid grid-cols-1 gap-density-xl lg:grid-cols-2 xl:grid-cols-3">
         <TeamLoad members={holders} />
@@ -104,10 +104,10 @@ function ServiceDashboard({ dossiers }: { dossiers: Dossier[] }) {
   return (
     <>
       <StatGrid>
-        <StatTile label="Dossiers actifs" value={active.length} hint="Tous les dossiers du service" to="/dossiers" />
-        <StatTile label="Non affectés" value={unassigned.length} tone="warning" hint="À répartir" to="/dossiers?statut=non_affecte" />
-        <StatTile label="Bloqués ou en attente" value={stuck.length} tone="destructive" hint="À débloquer" to="/dossiers?statut=bloque" />
-        <StatTile label="Échéance dépassée" value={late.length} tone="warning" hint="À relancer" to="/alertes" />
+        <StatTile icon={<Folders className="h-4 w-4" />} label="Dossiers actifs" value={active.length} hint="Voir les dossiers du service" to="/dossiers" />
+        <StatTile icon={<UserX className="h-4 w-4" />} label="Sans détenteur" value={unassigned.length} tone="warning" hint={unassigned.length ? 'À répartir' : 'Tout est affecté'} to="/dossiers?statut=non_affecte" />
+        <StatTile icon={<Hourglass className="h-4 w-4" />} label="Bloqués ou en attente" value={stuck.length} tone="destructive" hint={stuck.length ? 'À débloquer' : 'Rien en attente'} to="/dossiers?statut=bloque" />
+        <StatTile icon={<ClockAlert className="h-4 w-4" />} label="Échéances dépassées" value={late.length} tone="warning" hint={late.length ? 'Voir les retards' : 'Aucun retard'} to="/alertes" />
       </StatGrid>
       <div className="grid grid-cols-1 gap-density-xl lg:grid-cols-5">
         <div className="lg:col-span-2">
@@ -292,6 +292,18 @@ function GettingStarted() {
   )
 }
 
+// One sentence that tells a manager what needs them today.
+function attentionSummary(dossiers: Dossier[]): string {
+  const blocked = dossiers.filter((d) => d.status === 'bloque').length
+  const late = dossiers.filter(isLate).length
+  const parts = [
+    blocked > 0 ? `${blocked} dossier${blocked > 1 ? 's' : ''} bloqué${blocked > 1 ? 's' : ''}` : null,
+    late > 0 ? `${late} échéance${late > 1 ? 's' : ''} dépassée${late > 1 ? 's' : ''}` : null,
+  ].filter(Boolean)
+  if (parts.length === 0) return 'Tout circule normalement : aucun blocage, aucune échéance dépassée.'
+  return `${parts.join(' et ')} ${blocked + late > 1 ? 'demandent' : 'demande'} votre attention aujourd’hui.`
+}
+
 function isLate(d: Dossier): boolean {
   return d.status !== 'termine' && !!d.dueDate && daysBetween(new Date().toISOString(), d.dueDate) < 0
 }
@@ -300,12 +312,18 @@ function StatGrid({ children }: { children: ReactNode }) {
   return <div className="grid grid-cols-2 gap-density-md lg:grid-cols-4">{children}</div>
 }
 
-function StatTile({ label, value, hint, tone, to }: { label: string; value: number; hint: string; tone?: 'destructive' | 'warning' | 'success'; to?: string }) {
-  const color = tone === 'destructive' ? 'text-destructive' : tone === 'warning' ? 'text-warning' : tone === 'success' ? 'text-success' : 'text-foreground'
+function StatTile({ label, value, hint, tone, to, icon }: { label: string; value: number; hint: string; tone?: 'destructive' | 'warning' | 'success'; to?: string; icon?: ReactNode }) {
+  // A zero is good news for alert tiles: keep it calm instead of painting it red.
+  const calm = value === 0 && (tone === 'destructive' || tone === 'warning')
+  const color = calm ? 'text-muted-foreground' : tone === 'destructive' ? 'text-destructive' : tone === 'warning' ? 'text-warning' : tone === 'success' ? 'text-success' : 'text-foreground'
+  const chip = calm || !tone ? 'bg-muted text-muted-foreground' : tone === 'destructive' ? 'bg-destructive/10 text-destructive' : tone === 'warning' ? 'bg-warning/10 text-warning' : 'bg-success/10 text-success'
   const body = (
     <>
-      <p className="text-sm font-medium text-muted-foreground">{label}</p>
-      <p className={`mt-2 text-[2.25rem] font-bold leading-none tracking-tight tabular-nums ${color}`}>{value}</p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-medium text-muted-foreground">{label}</p>
+        {icon && <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${chip}`}>{icon}</span>}
+      </div>
+      <p className={`mt-1 text-[2.25rem] font-bold leading-none tracking-tight tabular-nums ${color}`}>{value}</p>
       <p className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
         {hint}
         {to && <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />}
@@ -343,29 +361,35 @@ function QuickAction({ icon, title, description, onClick, primary }: { icon: Rea
 // Each holder's open dossiers, linking to their filtered list.
 function TeamLoad({ members }: { members: Member[] }) {
   const { state } = useSuivix()
+  // Busiest first; bars are relative to the busiest person so differences are readable.
+  const rows = members.map((m) => ({ m, sc: computeAgentScorecard(m, state.dossiers) })).sort((a, b) => b.sc.enCours + b.sc.bloque - (a.sc.enCours + a.sc.bloque))
+  const max = Math.max(1, ...rows.map((r) => r.sc.enCours + r.sc.bloque))
   return (
     <Card className="h-full">
-      <CardHeader>
+      <CardHeader className="flex-row items-center justify-between">
         <CardTitle>Charge de l'équipe</CardTitle>
+        <span className="text-xs text-muted-foreground">dossiers en main</span>
       </CardHeader>
-      <CardContent className="space-y-density-md">
-        {members.length === 0 ? (
+      <CardContent className="space-y-density-sm">
+        {rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">Invitez des collaborateurs pour leur confier des dossiers.</p>
         ) : (
-          members.map((m) => {
-            const sc = computeAgentScorecard(m, state.dossiers)
+          rows.map(({ m, sc }) => {
             const open = sc.enCours + sc.bloque
             return (
               <Link key={m.id} to={`/dossiers?detenteur=${m.id}`} className="block rounded-md p-1.5 transition-colors hover:bg-muted/60">
                 <div className="mb-1.5 flex items-center gap-2.5">
                   <MemberAvatar name={m.name} color={m.color} size="sm" />
                   <span className="min-w-0 flex-1 truncate text-sm font-medium">{m.name}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {open} actif{open > 1 ? 's' : ''}
-                    {sc.bloque > 0 && <span className="text-destructive"> · {sc.bloque} bloqué{sc.bloque > 1 ? 's' : ''}</span>}
+                  <span className="text-xs tabular-nums text-muted-foreground">
+                    {sc.bloque > 0 && <span className="text-destructive">{sc.bloque} bloqué{sc.bloque > 1 ? 's' : ''} · </span>}
+                    <span className="font-semibold text-foreground">{open}</span>
                   </span>
                 </div>
-                <Progress value={Math.min(100, open * 12.5)} className="h-1.5" />
+                <div className="flex h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+                  <span className="bg-primary" style={{ width: `${(sc.enCours / max) * 100}%` }} />
+                  <span className="bg-destructive" style={{ width: `${(sc.bloque / max) * 100}%` }} />
+                </div>
               </Link>
             )
           })
@@ -387,8 +411,8 @@ function UnblockList({ dossiers }: { dossiers: Dossier[] }) {
         <CardTitle className="flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 text-destructive" /> À débloquer
         </CardTitle>
-        <Link to="/alertes" className="text-xs font-medium text-primary hover:underline">
-          Toutes les alertes
+        <Link to="/alertes" className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+          Toutes les alertes <ArrowRight className="h-3 w-3" />
         </Link>
       </CardHeader>
       <CardContent>
@@ -482,10 +506,13 @@ function ActivityFeed({ dossiers, types, title = 'Activité récente' }: { dossi
                 <li key={h.id} className="relative">
                   <span className="absolute -left-[1.42rem] top-1.5 h-2 w-2 bg-primary" />
                   <Link to={`/dossiers/${h.dossierId}`} className="block hover:text-primary">
-                    <p className="text-sm leading-snug">{h.description}</p>
+                    <p className="text-sm font-medium leading-snug">{h.description}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {d?.title} · <span className="ref">{d?.reference}</span>
+                    </p>
                   </Link>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    <span className="ref">{d?.reference}</span> · {formatDateTime(h.date)}
+                    {formatRelative(h.date)}
                     {author ? ` · ${author.name}` : ''}
                   </p>
                 </li>

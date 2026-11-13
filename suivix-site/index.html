@@ -18,7 +18,7 @@
 *{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
 body{font-family:'Satoshi',system-ui,sans-serif;color:var(--ink);background:var(--ivory);font-size:17px;line-height:1.6;-webkit-font-smoothing:antialiased}
-img{max-width:100%;display:block}
+img{max-width:100%;height:auto;display:block}
 a{color:inherit}
 .wrap{max-width:1180px;margin:0 auto;padding:0 24px}
 .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--blue);font-weight:500}
@@ -55,14 +55,43 @@ nav .btn{padding:9px 16px;font-size:15px}
 .hero .actions{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:8px}
 .shot{margin-top:56px;border-radius:14px 14px 0 0;background:var(--ink);padding:10px 10px 0;box-shadow:0 40px 80px -30px rgba(16,24,40,.45);max-width:1100px}
 .shot img{border-radius:8px 8px 0 0}
+/* Hero background + proof */
+.hero{background:linear-gradient(var(--ivory),var(--ivory)) padding-box,repeating-linear-gradient(90deg,transparent 0 119px,rgba(16,24,40,.045) 119px 120px)}
+.hero h1 em{font-family:'Sentient',Georgia,serif;font-style:italic;font-weight:400;color:var(--blue)}
+.proof{display:flex;flex-wrap:wrap;justify-content:center;gap:10px 28px;font-size:15px;color:var(--muted);margin-top:4px}
+.proof span{display:flex;align-items:center;gap:8px}.proof span::before{content:"";width:7px;height:7px;background:var(--blue)}
+/* Before / after */
+.compare{margin-top:48px;border:1px solid #22304A;border-radius:14px;overflow:hidden}
+.compare .row{display:grid;grid-template-columns:1fr 1fr}
+.compare .row+.row{border-top:1px solid #22304A}
+.compare .row>div{padding:20px 24px}
+.compare .row>div+div{background:#16223A;border-left:1px solid #22304A}
+.compare .head>div{font-family:'IBM Plex Mono',monospace;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:#8A96AD;padding-top:14px;padding-bottom:14px}
+.compare .head>div+div{color:#6E9BFF}
+.compare .before{color:#B9CCF9}
+.compare .after{font-weight:500}
+.compare .after::before{content:"✓ ";color:#6E9BFF;font-weight:700}
+/* FAQ */
+.faq{max-width:820px;margin:44px auto 0;display:grid;gap:10px}
+.faq details{background:var(--white);border:1px solid var(--line);border-radius:12px;padding:0 22px}
+.faq summary{cursor:pointer;list-style:none;font-weight:700;padding:18px 0;display:flex;justify-content:space-between;gap:16px}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary::after{content:"+";color:var(--blue);font-size:22px;line-height:1}
+.faq details[open] summary::after{content:"–"}
+.faq p{color:var(--muted);padding:0 0 18px;max-width:680px}
+/* Overlapping screenshots */
+.media.pair{position:relative;min-height:540px;align-items:flex-start}
+.media.pair img:first-child{max-height:440px}
+.media.pair img:last-child{max-height:440px;margin-top:72px;margin-left:-56px}
+.caption{font-size:14px;color:var(--muted);margin-top:14px;text-align:center}
 /* Rail */
-.rail{display:flex;align-items:center;justify-content:center;gap:0;margin:8px 0 0;font-family:'IBM Plex Mono',monospace;font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.rail{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px 0;margin:8px 0 0;font-family:'IBM Plex Mono',monospace;font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
 .rail i{display:inline-block;width:10px;height:10px;background:var(--blue);margin-right:10px}
 .rail span{display:flex;align-items:center}
 .rail span+span::before{content:"";width:48px;height:2px;background:var(--blue);margin:0 14px}
 /* Problem */
 .dark{background:var(--ink);color:var(--ivory)}
-.dark .lead{color:#B9CCF9}
+.dark .lead,.contact .lead{color:#B9CCF9}
 .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
 .problem .grid3{margin-top:48px}
 .problem .card{border-top:3px solid var(--blue);padding-top:22px}
@@ -135,12 +164,14 @@ footer a{text-decoration:none}footer a:hover{color:#fff}
   .roles{grid-template-columns:1fr 1fr}
   .tier.mid{transform:none}
   section{padding:72px 0}
-  .media{padding:20px;flex-wrap:wrap}.media img,.phone img{max-height:420px}
+  .media{padding:20px}.media img,.phone img{max-height:420px}
+  .media.pair{min-height:0}.media.pair img:first-child{max-height:300px}.media.pair img:last-child{max-height:300px;margin-top:40px;margin-left:-40px}
+  .compare .row>div{padding:16px}
 }
 @media (max-width:560px){
   nav .cta .btn-ghost{display:none}
   .roles{grid-template-columns:1fr}
-  .rail span+span::before{width:20px;margin:0 8px}
+  .rail{font-size:11px}.rail span+span::before{width:14px;margin:0 8px}
 }
 </style>
 </head>
@@ -153,6 +184,7 @@ footer a{text-decoration:none}footer a:hover{color:#fff}
       <a href="#fonctionnement">Fonctionnement</a>
       <a href="#offres">Offres</a>
       <a href="#mise-en-place">Mise en place</a>
+      <a href="#questions">Questions</a>
       <a href="#contact">Contact</a>
     </div>
     <div class="cta">
@@ -165,13 +197,13 @@ footer a{text-decoration:none}footer a:hover{color:#fff}
 <header class="hero">
   <div class="wrap">
     <p class="tag serif">Réception et suivi de dossier.</p>
-    <h1>Sachez à tout moment qui détient chaque dossier, où il se trouve et où il en est.</h1>
-    <p class="lead">Suivix remplace le cahier de transmission et les « où est le dossier ? » par trois gestes simples, pensés pour les PME camerounaises.</p>
+    <h1>Chaque dossier a un détenteur, un emplacement, <em>une trace.</em></h1>
+    <p class="lead">Suivix remplace le cahier de transmission. Vos équipes enregistrent, pointent et retrouvent chaque dossier en quelques secondes — et vos clients suivent le leur sans vous appeler.</p>
     <div class="actions">
-      <a class="btn btn-primary" href="https://app.suivix.co">Essayer la démo gratuite</a>
-      <a class="btn btn-ghost" href="#contact">Parler à l’équipe</a>
+      <a class="btn btn-primary" href="https://app.suivix.co">Essayer gratuitement</a>
+      <a class="btn btn-ghost" href="#contact">Demander une démo de 30 min</a>
     </div>
-    <div class="rail" aria-label="Enregistrer, pointer, retrouver"><span><i></i>Enregistrer</span><span>Pointer</span><span>Retrouver</span></div>
+    <div class="proof"><span>Gratuit jusqu’à 3 utilisateurs</span><span>Opérationnel en deux semaines</span><span>Pensé pour les PME du Cameroun</span></div>
     <div class="shot"><img src="/assets/dashboard.webp" width="1600" height="1000" alt="Tableau de bord Suivix : dossiers en circulation, bloqués, échéances, charge de l’équipe et activité récente"></div>
   </div>
 </header>
@@ -179,11 +211,15 @@ footer a{text-decoration:none}footer a:hover{color:#fff}
 <section class="dark problem">
   <div class="wrap">
     <p class="eyebrow" style="color:#B9CCF9">Le constat</p>
-    <h2 style="margin-top:12px;max-width:820px">« Où est le dossier ? » — une question qui coûte des heures chaque semaine.</h2>
-    <div class="grid3">
-      <div class="card"><span class="num">01</span><h3>Dossiers introuvables</h3><p>Le papier passe de bureau en bureau sans trace. On appelle, on cherche, on attend.</p></div>
-      <div class="card"><span class="num">02</span><h3>Pièces qui manquent</h3><p>Le dossier attend une pièce du client, mais personne ne le lui a dit clairement.</p></div>
-      <div class="card"><span class="num">03</span><h3>Aucune visibilité</h3><p>La direction ne sait pas qui est surchargé, ni ce qui bloque, ni depuis quand.</p></div>
+    <h2 style="margin-top:12px;max-width:820px">« Où est le dossier ? » coûte des heures chaque semaine.</h2>
+    <p class="lead" style="margin-top:14px">Le papier circule de bureau en bureau sans laisser de trace. Suivix en laisse une à chaque étape.</p>
+    <div class="compare">
+      <div class="row head"><div>Aujourd’hui</div><div>Avec Suivix</div></div>
+      <div class="row"><div class="before">Le dossier est « quelque part entre deux bureaux ».</div><div class="after">Son détenteur et son bureau sont connus à la minute.</div></div>
+      <div class="row"><div class="before">« Je te l’ai remis » — « Non, jamais reçu ».</div><div class="after">Chaque remise laisse une décharge signée.</div></div>
+      <div class="row"><div class="before">Le client appelle ou se déplace pour savoir où en est son dossier.</div><div class="after">Il scanne son accusé de réception et suit l’avancement.</div></div>
+      <div class="row"><div class="before">Un dossier attend une pièce pendant des semaines sans que personne ne relance.</div><div class="after">Les pièces manquantes sont listées, la relance part en un clic.</div></div>
+      <div class="row"><div class="before">La direction découvre les retards quand le client se plaint.</div><div class="after">Blocages, retards et charge de chacun sont visibles chaque matin.</div></div>
     </div>
   </div>
 </section>
@@ -191,16 +227,17 @@ footer a{text-decoration:none}footer a:hover{color:#fff}
 <section id="fonctionnement">
   <div class="wrap">
     <p class="eyebrow">Fonctionnement</p>
-    <h2 style="margin-top:12px">Trois gestes. Tout est tracé.</h2>
+    <h2 style="margin-top:12px">Trois gestes, et tout est tracé.</h2>
+    <div class="rail" style="justify-content:flex-start;margin-top:18px" aria-hidden="true"><span><i></i>Enregistrer</span><span><i></i>Pointer</span><span><i></i>Retrouver</span></div>
 
     <div class="step">
       <div>
         <p class="eyebrow">01 · Enregistrer</p>
-        <h2 style="margin-top:10px;font-size:32px">Chaque dossier reçu, chaque pièce vérifiée.</h2>
+        <h2 style="margin-top:10px;font-size:32px">Au guichet, rien ne se perd dès la première minute.</h2>
         <ul>
-          <li>Le type de dossier fixe la liste des pièces : on coche au guichet ce qui est remis.</li>
-          <li>Une référence unique suit le dossier du papier à l’écran.</li>
-          <li>Le déposant repart avec un accusé de réception : QR de suivi et pièces encore attendues.</li>
+          <li>Choisissez le type de dossier : la liste des pièces à fournir s’affiche, vous cochez celles qui sont remises.</li>
+          <li>Le dossier reçoit une référence unique, à reporter sur la chemise papier.</li>
+          <li>Le déposant repart avec son accusé de réception : un QR pour suivre son dossier et la liste de ce qu’il doit encore apporter.</li>
         </ul>
       </div>
       <div class="media"><img src="/assets/receipt.webp" width="560" height="810" alt="Accusé de réception avec QR de suivi et pièces à transmettre" loading="lazy"></div>
@@ -209,24 +246,24 @@ footer a{text-decoration:none}footer a:hover{color:#fff}
     <div class="step rev">
       <div>
         <p class="eyebrow">02 · Pointer</p>
-        <h2 style="margin-top:10px;font-size:32px">Chaque passage de main, signé et prouvé.</h2>
+        <h2 style="margin-top:10px;font-size:32px">La décharge, en dix secondes au lieu d’un cahier.</h2>
         <ul>
-          <li>Le dossier change de main : on le pointe en quelques secondes, le destinataire est prévenu par email.</li>
-          <li>Le destinataire signe du doigt : la décharge est générée et s’imprime.</li>
-          <li>Le registre des transmissions répond à « qui l’avait, et depuis quand ? ».</li>
+          <li>Le dossier change de main : indiquez qui le reçoit et dans quel bureau. Le destinataire est prévenu par email.</li>
+          <li>Il signe du doigt sur l’écran. La décharge est créée, datée et prête à imprimer.</li>
+          <li>Le registre des transmissions répond à la question qui fâche : qui l’avait, et depuis quand ?</li>
         </ul>
       </div>
-      <div class="media"><img src="/assets/pointer.webp" width="540" height="898" alt="Pointer un transfert avec signature du destinataire" loading="lazy"><img src="/assets/decharge.webp" width="620" height="877" alt="Décharge de transmission signée" loading="lazy" style="margin-top:48px"></div>
+      <div class="media pair"><img src="/assets/pointer.webp" width="540" height="898" alt="Pointer un transfert avec signature du destinataire" loading="lazy"><img src="/assets/decharge.webp" width="620" height="877" alt="Décharge de transmission signée" loading="lazy"></div>
     </div>
 
     <div class="step">
       <div>
         <p class="eyebrow">03 · Retrouver</p>
-        <h2 style="margin-top:10px;font-size:32px">Le client suit son dossier, sans appeler.</h2>
+        <h2 style="margin-top:10px;font-size:32px">Vos clients suivent leur dossier sans vous appeler.</h2>
         <ul>
-          <li>Il scanne le QR de son accusé de réception et voit où en est son dossier.</li>
-          <li>Les pièces manquantes sont listées : il sait quoi apporter.</li>
-          <li>Les notes internes ne sont jamais visibles.</li>
+          <li>Le client scanne le QR de son accusé de réception : reçu, en traitement ou terminé, il le voit sur son téléphone.</li>
+          <li>S’il manque des pièces, la liste est sous ses yeux. Il sait quoi apporter, sans se déplacer pour demander.</li>
+          <li>Il ne voit que l’essentiel : vos notes internes et vos échanges restent chez vous.</li>
         </ul>
       </div>
       <div class="media"><div class="phone"><img src="/assets/suivi.webp" width="420" height="908" alt="Page de suivi du client sur téléphone" loading="lazy"></div></div>
@@ -234,12 +271,12 @@ footer a{text-decoration:none}footer a:hover{color:#fff}
 
     <div class="step rev">
       <div>
-        <p class="eyebrow">Pièces à relancer</p>
-        <h2 style="margin-top:10px;font-size:32px">Une relance précise, et le dossier repart.</h2>
+        <p class="eyebrow">Et entre-temps · Relancer</p>
+        <h2 style="margin-top:10px;font-size:32px">Les dossiers en attente ne dorment plus.</h2>
         <ul>
-          <li>Tous les dossiers en attente de pièces, au même endroit.</li>
-          <li>Un clic envoie au client la liste exacte de ce qui manque.</li>
-          <li>Chaque relance est datée dans l’historique du dossier.</li>
+          <li>Tous les dossiers qui attendent une pièce du client sont réunis sur une seule page.</li>
+          <li>Un clic prépare l’email de relance avec la liste exacte de ce qui manque.</li>
+          <li>Chaque relance est datée dans l’historique : vous savez qui a été relancé, et quand.</li>
         </ul>
       </div>
       <div class="media"><img src="/assets/relances.webp" width="1200" height="632" alt="Page Pièces à relancer" loading="lazy"></div>
@@ -250,13 +287,13 @@ footer a{text-decoration:none}footer a:hover{color:#fff}
 <section style="padding-top:0">
   <div class="wrap">
     <p class="eyebrow">5 types de comptes</p>
-    <h2 style="margin-top:12px">Calqués sur l’organisation d’une PME.</h2>
+    <h2 style="margin-top:12px">Chacun voit ce qui le concerne, rien de plus.</h2>
     <div class="roles">
-      <div class="role"><h3>Administrateur</h3><p>Gère le compte, les utilisateurs, les types de dossiers.</p></div>
-      <div class="role"><h3>Directeur</h3><p>Volumes, blocages, échéances et charge de l’équipe.</p></div>
-      <div class="role"><h3>Chef de service</h3><p>Répartit les dossiers et lève les blocages.</p></div>
-      <div class="role"><h3>Collaborateur</h3><p>Traite ses dossiers, signe ce qu’il reçoit.</p></div>
-      <div class="role"><h3>Secrétariat</h3><p>Enregistre, remet l’accusé, relance les clients.</p></div>
+      <div class="role"><h3>Administrateur</h3><p>Crée les comptes, règle les types de dossiers et les alertes.</p></div>
+      <div class="role"><h3>Directeur</h3><p>Voit chaque matin les blocages, les retards et la charge de chacun.</p></div>
+      <div class="role"><h3>Chef de service</h3><p>Répartit les dossiers de son service et lève les blocages.</p></div>
+      <div class="role"><h3>Collaborateur</h3><p>Retrouve ses dossiers et ses échéances, signe ce qu’il reçoit.</p></div>
+      <div class="role"><h3>Secrétariat</h3><p>Enregistre les dépôts, remet l’accusé de réception, relance les clients.</p></div>
     </div>
   </div>
 </section>
@@ -264,7 +301,7 @@ footer a{text-decoration:none}footer a:hover{color:#fff}
 <section class="pricing" id="offres">
   <div class="wrap">
     <p class="eyebrow" style="text-align:center">Offres</p>
-    <h2 style="margin-top:12px;text-align:center">Trois offres, trois niveaux de maîtrise.</h2>
+    <h2 style="margin-top:12px;text-align:center">Commencez gratuitement. Passez à la suite quand l’équipe suit.</h2>
     <div class="tiers">
       <div class="tier">
         <div class="top"><span class="name">DÉCOUVERTE</span><span class="level"><i class="on"></i><i></i><i></i></span></div>
@@ -303,7 +340,7 @@ footer a{text-decoration:none}footer a:hover{color:#fff}
         <a class="btn" href="#contact">Nous contacter</a>
       </div>
     </div>
-    <p class="note">Tarifs mensuels en francs CFA. Paiement par Orange Money, MTN MoMo ou virement.</p>
+    <p class="note">Tarifs mensuels en francs CFA, sans frais d’installation. Paiement par Orange Money, MTN MoMo ou virement.</p>
   </div>
 </section>
 
@@ -320,11 +357,26 @@ footer a{text-decoration:none}footer a:hover{color:#fff}
   </div>
 </section>
 
+<section id="questions">
+  <div class="wrap">
+    <p class="eyebrow" style="text-align:center">Questions fréquentes</p>
+    <h2 style="margin-top:12px;text-align:center">Ce qu’on nous demande avant de commencer.</h2>
+    <div class="faq">
+      <details open><summary>Faut-il abandonner le papier ?</summary><p>Non. Les dossiers restent dans leurs chemises. Suivix y ajoute une étiquette QR et garde la trace de chaque déplacement : le papier et l’écran racontent enfin la même histoire.</p></details>
+      <details><summary>Que deviennent nos dossiers déjà en cours ?</summary><p>Vous importez votre registre Excel en une fois. Chaque dossier reçoit sa référence et son détenteur actuel, puis vous collez les étiquettes QR sur les chemises.</p></details>
+      <details><summary>Notre équipe n’est pas à l’aise avec l’informatique.</summary><p>Les gestes du quotidien tiennent en trois écrans : enregistrer, pointer, retrouver. La formation se fait par profil — secrétariat, collaborateurs, chefs de service, direction — et un référent est formé chez vous.</p></details>
+      <details><summary>Combien de temps avant d’être opérationnel ?</summary><p>Deux semaines en général : le compte et l’équipe le premier jour, les dossiers en cours la première semaine, le rythme normal la deuxième.</p></details>
+      <details><summary>Comment payer ?</summary><p>Par Orange Money, MTN MoMo ou virement, chaque mois. L’offre Découverte est gratuite et sans engagement : vous pouvez tester avec un seul service avant de décider.</p></details>
+    </div>
+  </div>
+</section>
+
 <section class="contact" id="contact">
   <div class="wrap">
     <div>
       <p class="eyebrow" style="color:#B9CCF9">Parlons de vos dossiers</p>
-      <h2 style="margin-top:14px;font-size:clamp(30px,4vw,48px)">Une démonstration de 30 minutes, avec vos propres dossiers.</h2>
+      <h2 style="margin-top:14px;font-size:clamp(30px,4vw,48px)">30 minutes, avec vos propres dossiers.</h2>
+      <p class="lead" style="margin-top:14px">Apportez trois dossiers en cours. Nous les enregistrons ensemble, et vous repartez en sachant si Suivix convient à votre organisation.</p>
       <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:28px">
         <a class="btn btn-primary" href="mailto:philippe@suivix.co?subject=Demande%20de%20d%C3%A9monstration%20Suivix">Demander une démo</a>
         <a class="btn btn-ghost" href="https://app.suivix.co">Essayer la démo en ligne</a>

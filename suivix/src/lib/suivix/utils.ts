@@ -25,6 +25,19 @@ export function formatDateTime(iso: string | null): string {
   return d.toLocaleString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
+// "il y a 2 h", "hier" — recent activity reads better as elapsed time than as a timestamp.
+export function formatRelative(iso: string): string {
+  const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60000)
+  if (minutes < 1) return "à l'instant"
+  if (minutes < 60) return `il y a ${minutes} min`
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) return `il y a ${hours} h`
+  const days = Math.round(hours / 24)
+  if (days === 1) return 'hier'
+  if (days < 7) return `il y a ${days} j`
+  return formatDate(iso)
+}
+
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} o`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} Ko`
