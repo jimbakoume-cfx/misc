@@ -16,14 +16,23 @@ import java.util.concurrent.TimeUnit
  * channel. The ping carries no data: the phone then checks in over the normal authenticated API.
  * If the connection drops it reconnects with back-off; the normal check-in interval is the safety net.
  */
-class PushClient(private val onWake: () -> Unit) {
+class PushClient(private val onState: () -> Unit = {}, private val onWake: () -> Unit) {
     companion object {
         private const val TAG = "KioskPush"
         /** True while the channel is joined. Reported to the dashboard as "live". */
         @Volatile var connected = false
+            private set
     }
 
-    private val http = OkHttpClient.Builder().readTimeout(0, TimeUnit.MILLISECONDS).build()
+    // pingInterval: OkHttp sends a ping every 20 s and fails the socket when no pong comes back, so a dead link
+    // (network gone, NAT timeout) is noticed within seconds instead of at the next Phoenix keep-alive check.
+    private val http = OkHttpClient.Builder().readTimeout(0, TimeUnit.MILLISECONDS).pingInterval(20, TimeUnit.SECONDS).build()
+
+    private fun setConnected(v: Boolean) {
+        if (connected == v) return
+        connected = v
+        runCatching { onState() }
+    }
     private val scheduler = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "kiosk-push").apply { isDaemon = true } }
 
     private var url = ""; private var key = ""; private var channel = ""
@@ -49,9 +58,23 @@ class PushClient(private val onWake: () -> Unit) {
         close()
     }
 
+    /** The default network just came up or changed: the old socket is on the old link, so reconnect right now. */
+    @Synchronized fun kick() {
+        if (url.isEmpty()) return
+        close()
+        backoffSec = 2
+        scheduler.execute { open() }
+    }
+
+    /** The network went away: show "not connected" at once; [kick] or the back-off timer brings the channel back. */
+    @Synchronized fun drop() {
+        if (url.isEmpty()) return
+        failed(generation)
+    }
+
     @Synchronized private fun close() {
         generation++
-        connected = false
+        setConnected(false)
         heartbeat?.cancel(false); heartbeat = null
         reconnect?.cancel(false); reconnect = null
         runCatching { socket?.close(1000, "bye") }
@@ -84,7 +107,7 @@ class PushClient(private val onWake: () -> Unit) {
                 when (m.optString("event")) {
                     "phx_reply" -> if (m.optString("topic") == topic) {
                         val ok = m.optJSONObject("payload")?.optString("status") == "ok"
-                        if (ok) { connected = true; backoffSec = 2; Log.i(TAG, "live"); onWake() } // catch up on anything missed while offline
+                        if (ok) { setConnected(true); backoffSec = 2; Log.i(TAG, "live"); onWake() } // catch up on anything missed while offline
                         else { Log.w(TAG, "join refused: $text"); failed(gen) }
                     }
                     "broadcast" -> if (m.optJSONObject("payload")?.optString("event") == "wake") onWake()

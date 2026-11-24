@@ -195,6 +195,43 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
     }
   }
   const wakeAll = async () => wake((await all("SELECT id FROM devices")).map((r) => r.id));
+
+  // ---------- presence check ----------
+  // "Seen 20 minutes ago" says nothing about now, so whenever someone looks at the fleet the server pings every phone
+  // (at most once every PING_EVERY_MS). A connected phone answers with a check-in within seconds; one that has not
+  // answered PING_GRACE_MS after a ping is shown as not responding instead of staying "online" until its window ends.
+  const PING_EVERY_MS = 30_000, PING_GRACE_MS = 12_000, PING_FRESH_MS = 150_000, PING_SLACK_MS = 2_000;
+  let ping = { last: 0, prev: 0 };
+  async function pingFleet() {
+    if (!pushOn) return;
+    // Read straight from the table: another instance of this function may have pinged a moment ago.
+    const s = Object.fromEntries((await all("SELECT key,value FROM settings WHERE key IN ('ping_at','ping_prev')")).map((r) => [r.key, r.value]));
+    ping = { last: num(s.ping_at), prev: num(s.ping_prev) };
+    if (now() - ping.last < PING_EVERY_MS) return;
+    ping = { last: now(), prev: ping.last };
+    await run("INSERT INTO settings(key,value) VALUES('ping_at',?),('ping_prev',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", String(ping.last), String(ping.prev));
+    const ids = (await all("SELECT push_id FROM devices WHERE push_id IS NOT NULL AND push_id<>''")).map((r) => r.push_id as string);
+    for (let i = 0; i < ids.length; i += 100) {
+      try {
+        await doFetch(`${supabaseUrl}/realtime/v1/api/broadcast`, {
+          method: "POST",
+          headers: { apikey: supabaseKey, "content-type": "application/json" },
+          body: JSON.stringify({ messages: ids.slice(i, i + 100).map((id) => ({ topic: channelOf(id), event: "wake", payload: {}, private: false })) }),
+          signal: AbortSignal.timeout(3000),
+        });
+      } catch (e) { console.warn("fleet ping failed:", (e as Error).message); }
+    }
+  }
+  /** true = answered the last ping, false = did not, null = no ping recent enough to tell. */
+  const answeredPing = (d: Row): boolean | null => {
+    const since = now() - ping.last;
+    if (!ping.last || since > PING_FRESH_MS) return null;
+    if (num(d.last_seen) >= ping.last - PING_SLACK_MS) return true;
+    if (since >= PING_GRACE_MS) return false;
+    // The latest ping is too fresh to judge: use the one before it when that is recent, else nothing is known yet.
+    if (ping.prev && ping.last - ping.prev <= PING_FRESH_MS) return num(d.last_seen) >= ping.prev - PING_SLACK_MS;
+    return null;
+  };
   const wakeGroup = async (gid: number) => wake((await all("SELECT id FROM devices WHERE group_id=?", gid)).map((r) => r.id));
 
   const policyEpoch = async () => Number(await setting("policy_epoch", "1"));
@@ -225,13 +262,16 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
   };
   // A phone is "live" when it said its push channel was up AND it has checked in within the push interval: a phone
   // whose channel died in deep sleep reports live until its next check-in, which this ages out.
-  const isLive = (d: Row) => !!json(d.status, {}).pushConnected && !!d.last_seen && now() - d.last_seen < cfg.push * 1000 + 60_000;
   const statusOf = (d: Row) => {
     const st = json(d.status, {});
     const iv = (st.pushConnected ? cfg.push : cfg.hb) * 1000;
     const age = d.last_seen ? now() - d.last_seen : Infinity;
-    return age < iv * 2 + 60_000 ? "online" : age < iv * 6 ? "stale" : "offline";
+    const byAge = age < iv * 2 + 60_000 ? "online" : age < iv * 6 ? "stale" : "offline";
+    // A phone that said its instant channel was up must answer the fleet ping to stay "online".
+    if (byAge === "online" && st.pushConnected && answeredPing(d) === false) return "stale";
+    return byAge;
   };
+  const isLive = (d: Row) => !!json(d.status, {}).pushConnected && statusOf(d) === "online";
 
   async function queueCommand(deviceId: number, type: string, payload: any = {}) {
     if (type === "update" && !payload.url) {
@@ -539,6 +579,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
 
   // ---------- dashboard API ----------
   add("GET", "/api/overview", "read", async () => {
+    await pingFleet();
     await sweep();
     const [devices, rel, usage, alertRowsRaw, budget] = await Promise.all([
       all("SELECT * FROM devices"), currentRelease(), monthUsage(),
@@ -570,6 +611,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
 
   add("GET", "/api/devices", "read", async (c) => {
     const q = c.query.get("q") ?? "", group = c.query.get("group") ?? "", state = c.query.get("state") ?? "";
+    await pingFleet();
     let [rows, usage] = await Promise.all([all("SELECT * FROM devices ORDER BY name"), monthUsage()]);
     if (q) {
       const needle = q.toLowerCase();
@@ -586,7 +628,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
     if (!d) throw new HttpError(404, "Not found");
     return d;
   };
-  add("GET", "/api/devices/:id", "read", async (c) => view(await deviceOr404(c.params.id), true));
+  add("GET", "/api/devices/:id", "read", async (c) => { await pingFleet(); return view(await deviceOr404(c.params.id), true); });
   add("GET", "/api/devices/:id/usage", "read", async (c) => {
     const d = await deviceOr404(c.params.id);
     const days = Math.min(Math.max(num(c.query.get("days"), 30), 1), 180);
