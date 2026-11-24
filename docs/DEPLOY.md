@@ -8,7 +8,7 @@ Phones check in straight through PostgREST (`kiosk_heartbeat`), so the function 
 |---|---|
 | Project | `confiance-kiosk`, ref `qzkoowbcngcdnhqystwz`, region eu-west-3 (Paris) |
 | API / function | `https://qzkoowbcngcdnhqystwz.supabase.co/functions/v1/kiosk` |
-| Dashboard | `https://confiance-kiosk-console.netlify.app` (static files, proxied `/api` → the function) |
+| Dashboard | `https://confiance-kiosk-console.jim-bakoume.workers.dev` on Cloudflare (static files + a Worker that proxies `/api` → the function); the older `https://confiance-kiosk-console.netlify.app` copy still exists |
 | APK downloads | `https://qzkoowbcngcdnhqystwz.supabase.co/storage/v1/object/public/apk/kiosk-agent.apk` |
 
 Supabase does not let a function on `*.supabase.co` serve HTML (it rewrites it to plain text), so the console's files
@@ -77,3 +77,23 @@ SOURCE_URL='postgres://…netlify…' TARGET_URL='postgres://postgres.qzkoowbcng
 Then upload the current APK again on the Apps page (files lived in Netlify Blobs). Phones on agent 1.3.x keep talking
 to the Netlify address, which proxies to Supabase; once they receive agent 1.4.0 they switch to the Supabase address by
 themselves (`policy.serverUrl`), after which the Netlify proxy rules are no longer needed.
+
+## Dashboard on Cloudflare Workers
+
+The `cloudflare/` folder is a small Workers project: the files of `public/` as static assets, and
+`cloudflare/src/worker.ts` in front of them. The Worker sets the security headers, proxies `/api/*`, `/apk/*` and
+`/healthz` to the Supabase function (adding `x-region` so the function runs next to its database, and passing the
+visitor's address so sign-in throttling stays per visitor), and redirects `/kiosk-agent.apk` to Storage. The page
+is therefore same-origin, like on Netlify, and needs no CORS entry.
+
+Deploy after any change under `public/` or `cloudflare/`:
+
+```bash
+cd cloudflare
+npm ci
+npx cf deploy        # needs CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in the environment
+```
+
+The project is configured in `cloudflare.config.ts` (Worker name, bindings, Supabase address) and
+`wrangler.config.ts` (the assets directory, `../public`). A custom domain can be added with `domains` in
+`cloudflare.config.ts` once the domain is on the Cloudflare account.
