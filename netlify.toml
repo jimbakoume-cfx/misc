@@ -1,5 +1,5 @@
-# RETIRED. The dashboard moved to Cloudflare Workers on 24 November 2026 (see cloudflare/ and docs/DEPLOY.md):
-#   https://confiance-kiosk.jim-bakoume.workers.dev
+# RETIRED. The dashboard moved to Cloudflare Pages on 24 November 2026 (see cloudflare/ and docs/DEPLOY.md):
+#   https://confiance-kiosk.pages.dev
 # This file only keeps the old address useful while the Netlify site still exists: every request is redirected to the
 # new address, so old bookmarks and documents keep working and nobody else can reuse the name for a look-alike page.
 # Delete this file once the Netlify site itself has been deleted.
@@ -8,6 +8,6 @@
 
 [[redirects]]
   from = "/*"
-  to = "https://confiance-kiosk.jim-bakoume.workers.dev/:splat"
+  to = "https://confiance-kiosk.pages.dev/:splat"
   status = 301
   force = true

@@ -8,16 +8,17 @@ Phones check in straight through PostgREST (`kiosk_heartbeat`), so the function 
 |---|---|
 | Project | `confiance-kiosk`, ref `qzkoowbcngcdnhqystwz`, region eu-west-3 (Paris) |
 | API / function | `https://qzkoowbcngcdnhqystwz.supabase.co/functions/v1/kiosk` |
-| Dashboard | `https://confiance-kiosk.jim-bakoume.workers.dev` on Cloudflare (static files + a Worker that proxies `/api` → the function) |
+| Dashboard | `https://confiance-kiosk.pages.dev` on Cloudflare Pages (static files + a worker that proxies `/api` → the function) |
 | APK downloads | `https://qzkoowbcngcdnhqystwz.supabase.co/storage/v1/object/public/apk/kiosk-agent.apk` |
 
 Supabase does not let a function on `*.supabase.co` serve HTML (it rewrites it to plain text), so the console's files
 are hosted elsewhere and talk to the function. Two free options are wired up:
 
-1. **Cloudflare Workers (the one in use).** The `cloudflare/` project serves `public/` and proxies `/api/*`, `/apk/*`
-   and `/healthz` to the function, so the page is same-origin and uses cookies. See "Dashboard on Cloudflare Workers"
-   below. Netlify did the same job until 24 November 2026 and is retired: `netlify.toml` now only redirects the old
-   address (`confiance-kiosk-console.netlify.app`) to the Cloudflare one for as long as that Netlify site exists.
+1. **Cloudflare Pages (the one in use).** The `cloudflare/` project publishes `public/` with a small worker that
+   proxies `/api/*`, `/apk/*` and `/healthz` to the function, so the page is same-origin and uses cookies. See
+   "Dashboard on Cloudflare Pages" below. Netlify did the same job until 24 November 2026 and is retired:
+   `netlify.toml` now only redirects the old address (`confiance-kiosk-console.netlify.app`) to the Cloudflare one for
+   as long as that Netlify site exists.
 2. **GitHub Pages.** `.github/workflows/pages.yml` publishes `public/` with `<meta name="kiosk-api">` pointing at the
    function (the console then signs in with a bearer token). Enable it once (repository **Settings → Pages → Source:
    GitHub Actions**), then run the workflow from the Actions tab; it is manual until Pages is enabled. Any other static
@@ -53,7 +54,7 @@ Optional:
 ## Deploying changes
 - API: `supabase functions deploy kiosk --no-verify-jwt`.
 - Database: add a file under `supabase/migrations/`, then `supabase db push`.
-- Dashboard: `cd cloudflare && npm ci && npx cf deploy` (Cloudflare); GitHub Pages redeploys on push.
+- Dashboard: `cd cloudflare && npm ci && npm run deploy` (Cloudflare Pages); GitHub Pages redeploys on push.
 - Phones: build the APK, upload it on the **Apps** page; phones update themselves.
 
 ## Capacity and cost (free plan)
@@ -78,22 +79,21 @@ Then upload the current APK again on the Apps page (files lived in Netlify Blobs
 to the Netlify address, which proxies to Supabase; once they receive agent 1.4.0 they switch to the Supabase address by
 themselves (`policy.serverUrl`), after which the Netlify proxy rules are no longer needed.
 
-## Dashboard on Cloudflare Workers
+## Dashboard on Cloudflare Pages
 
-The `cloudflare/` folder is a small Workers project: the files of `public/` as static assets, and
-`cloudflare/src/worker.ts` in front of them. The Worker sets the security headers, proxies `/api/*`, `/apk/*` and
-`/healthz` to the Supabase function (adding `x-region` so the function runs next to its database, and passing the
-visitor's address so sign-in throttling stays per visitor), and redirects `/kiosk-agent.apk` to Storage. The page
-is therefore same-origin and needs no CORS entry.
+The `cloudflare/` folder is a Pages project named `confiance-kiosk` (address `https://confiance-kiosk.pages.dev`).
+`build.mjs` assembles `cloudflare/dist/`: the files of `public/`, a `404.html`, and `src/_worker.js`, which Pages runs
+for every request. The worker sets the security headers, proxies `/api/*`, `/apk/*` and `/healthz` to the Supabase
+function (adding `x-region` so the function runs next to its database, and passing the visitor's address so sign-in
+throttling stays per visitor), and redirects `/kiosk-agent.apk` to Storage. The page is therefore same-origin and
+needs no CORS entry. The Supabase address and region are two constants at the top of `src/_worker.js`.
 
 Deploy after any change under `public/` or `cloudflare/`:
 
 ```bash
 cd cloudflare
 npm ci
-npx cf deploy        # needs CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in the environment
+npm run deploy       # needs CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in the environment
 ```
 
-The project is configured in `cloudflare.config.ts` (Worker name, bindings, Supabase address) and
-`wrangler.config.ts` (the assets directory, `../public`). A custom domain can be added with `domains` in
-`cloudflare.config.ts` once the domain is on the Cloudflare account.
+A custom domain can be attached to the Pages project from the Cloudflare dashboard once the domain is on the account.

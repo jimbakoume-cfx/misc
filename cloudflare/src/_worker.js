@@ -1,0 +1,63 @@
+// Confiance Kiosk dashboard on Cloudflare Pages (https://confiance-kiosk.pages.dev).
+// Pages runs this file for every request ("advanced mode"). Static files come from env.ASSETS (the repository's
+// public/ folder); /api, /apk and /healthz are proxied to the Supabase Edge Function so the page stays same-origin
+// (cookies work, nothing to configure in the browser).
+
+// Replace the project ref here if the backend moves to another Supabase project.
+const SUPABASE_URL = "https://qzkoowbcngcdnhqystwz.supabase.co";
+// The region of the database: the function runs next to it (a page costs ~0.3 s instead of ~2.3 s).
+const API_REGION = "eu-west-3";
+
+const SECURITY_HEADERS = {
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY",
+  "referrer-policy": "no-referrer",
+  "strict-transport-security": "max-age=31536000; includeSubDomains",
+  "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=()",
+  "cross-origin-opener-policy": "same-origin",
+  "content-security-policy":
+    `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://tile.openstreetmap.org; connect-src 'self' ${SUPABASE_URL}; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'`,
+};
+
+const isApi = (p) => p === "/healthz" || p.startsWith("/api/") || p.startsWith("/apk/");
+
+/** Forwards one request to the Supabase function and streams the answer back unchanged. */
+async function proxy(req, url) {
+  const target = `${SUPABASE_URL}/functions/v1/kiosk${url.pathname}${url.search}`;
+  const headers = new Headers(req.headers);
+  headers.delete("host");
+  headers.set("x-region", API_REGION);
+  // The function throttles sign-ins per client address and trusts this header from the hosting proxy. Here it
+  // carries the address Cloudflare saw, so every visitor is not counted as one Cloudflare address.
+  const ip = req.headers.get("cf-connecting-ip");
+  if (ip) headers.set("x-nf-client-connection-ip", ip); else headers.delete("x-nf-client-connection-ip");
+  const hasBody = !["GET", "HEAD"].includes(req.method);
+  const res = await fetch(target, { method: req.method, headers, body: hasBody ? req.body : undefined, redirect: "manual" });
+  return new Response(res.body, res);
+}
+
+export default {
+  async fetch(req, env) {
+    const url = new URL(req.url);
+    const path = url.pathname;
+
+    if (isApi(path)) {
+      try { return await proxy(req, url); }
+      catch { return Response.json({ error: "The server could not be reached. Try again in a moment." }, { status: 502 }); }
+    }
+    // Stable address of the newest app file (setup QR and USB script use the storage address directly).
+    if (path === "/kiosk-agent.apk") return Response.redirect(`${SUPABASE_URL}/storage/v1/object/public/apk/kiosk-agent.apk`, 302);
+
+    const asset = await env.ASSETS.fetch(req);
+    const res = new Response(asset.body, asset);
+    for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.headers.set(k, v);
+    if (path.startsWith("/fonts/")) res.headers.set("cache-control", "public, max-age=31536000, immutable");
+    else if (path === "/" || /\.(js|css|html)$/.test(path)) res.headers.set("cache-control", "no-cache");
+    if (path.startsWith("/setup/") && asset.ok) {
+      // Setup scripts are downloaded, never shown in the browser.
+      res.headers.set("content-type", "text/plain; charset=utf-8");
+      res.headers.set("content-disposition", "attachment");
+    }
+    return res;
+  },
+};

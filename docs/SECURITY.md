@@ -3,7 +3,7 @@
 ## Dashboard
 - Sign-in: password (12+ characters, scrypt-hashed) plus optional **two-factor codes** (authenticator app, with one-time
   recovery codes). Settings → *Require two-factor for all users* enforces it.
-- Sessions: HttpOnly, SameSite=Strict, Secure cookies, 12 h, when the console is served next to the API (the Cloudflare Worker proxies it); a
+- Sessions: HttpOnly, SameSite=Strict, Secure cookies, 12 h, when the console is served next to the API (the Cloudflare Pages worker proxies it); a
   console hosted elsewhere (GitHub Pages) keeps a bearer token in the browser instead and sends no cookies. Changing your
   password or two-factor settings signs out all other sessions. Cookie-based changes must carry a custom header (CSRF).
 - Brute-force protection: 8 failed sign-ins lock that address/account for 5 minutes. Failures are logged with the address.
