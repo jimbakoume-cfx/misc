@@ -180,7 +180,8 @@ function paint(tn, data) {
   p.bind?.(data);
   updateBadges(data, tn);
 }
-async function go(tn, { quiet = false } = {}) {
+let followA = null, followB = null;
+async function go(tn, { quiet = false, follow = !quiet } = {}) {
   const p = pages[tn]; if (!p) return;
   const changed = tab !== tn; tab = tn;
   $$("#nav button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tn));
@@ -193,8 +194,13 @@ async function go(tn, { quiet = false } = {}) {
     pageData[tn] = data;
     if (!quiet || !isTyping()) paint(tn, data);
   } catch (e) { if (!quiet) fail(e); }
-  // Live pages refresh once a minute while the tab is visible.
-  if (p.live) refreshTimer = setInterval(() => { if (document.visibilityState === "visible" && !$("#dlg").open) go(tn, { quiet: true }); }, 60_000);
+  // Live pages: opening one makes the server ping every phone, so look again once the answers are in (5 s) and once the
+  // silent ones are marked (14 s), then every 20 s while the tab is visible.
+  if (p.live) {
+    const again = () => { if (tab === tn && document.visibilityState === "visible" && !$("#dlg").open) go(tn, { quiet: true, follow: false }); };
+    if (follow) { clearTimeout(followA); clearTimeout(followB); followA = setTimeout(again, 5000); followB = setTimeout(again, 14000); }
+    refreshTimer = setInterval(again, 20_000);
+  }
 }
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && pages[tab]?.live && !$("#dlg").open) go(tab, { quiet: true }); });
 const isTyping = () => { const a = document.activeElement; return a && $("#view").contains(a) && /INPUT|TEXTAREA|SELECT/.test(a.tagName) && a.id !== "q"; };
@@ -414,7 +420,9 @@ const OSM = () => L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", 
 /** Every phone with a known position on one map: green live/online, amber stale, grey offline, red lost. */
 function drawFleetMap(all) {
   const el = $("#fleetMap");
-  if (fleetMap) { fleetMap.remove(); fleetMap = null; }
+  // A background refresh redraws the page: keep the view the person had instead of jumping back to the whole fleet.
+  let keep = null;
+  if (fleetMap) { try { keep = { c: fleetMap.getCenter(), z: fleetMap.getZoom() }; } catch { /* map not ready */ } fleetMap.remove(); fleetMap = null; }
   if (!el || !window.L) return;
   const pts = all.filter((d) => d.location && Number.isFinite(Number(d.location.lat)));
   const map = L.map(el, { zoomControl: true, scrollWheelZoom: false }); OSM().addTo(map);
@@ -424,7 +432,8 @@ function drawFleetMap(all) {
     m.bindTooltip(`<b>${esc(d.driverName || d.name)}</b><br>${esc(t("state." + d.state))} · ${esc(ago(d.location.at))}`, { direction: "top", offset: [0, -8] });
     m.on("click", () => openDevice(d.id));
   }
-  if (pts.length) map.fitBounds(L.latLngBounds(pts.map((d) => [Number(d.location.lat), Number(d.location.lon)])).pad(0.2), { maxZoom: 15 });
+  if (keep) map.setView(keep.c, keep.z, { animate: false });
+  else if (pts.length) map.fitBounds(L.latLngBounds(pts.map((d) => [Number(d.location.lat), Number(d.location.lon)])).pad(0.2), { maxZoom: 15 });
   else map.setView([3.87, 11.52], 6);
   fleetMap = map; setTimeout(() => map.invalidateSize(), 50);
 }

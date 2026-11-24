@@ -40,7 +40,7 @@ async function makeApp(opts: { seed?: Seed; env?: Record<string, string>; fetch?
     const key = (await pg.query("SELECT value FROM settings WHERE key='cron_key'")).rows[0] as any;
     return call("POST", "/api/cron", { headers: { "x-cron-key": key.value } });
   };
-  return { call, admin: login.body.token as string, login, callCron };
+  return { call, admin: login.body.token as string, login, callCron, pg };
 }
 
 const { call, admin, login } = await makeApp();
@@ -391,6 +391,54 @@ test("instant push: phones get a private channel and are pinged when something c
   await s.call("PUT", "/api/settings", { token: s.admin, body: { autoUpdate: false } });
   assert.equal(sent.length, 3);
   assert.equal((await s.call("GET", "/api/overview", { token: s.admin })).body.push, true);
+});
+
+test("presence: looking at the fleet pings every phone, and one that does not answer stops being online", async () => {
+  const sent: any[] = [];
+  const fakeFetch = (async (_url: string, init: any) => { sent.push(JSON.parse(init.body)); return new Response("", { status: 202 }); }) as unknown as typeof fetch;
+  const s = await makeApp({ env: { SUPABASE_URL: "https://proj.supabase.co", SUPABASE_KEY: "k" }, fetch: fakeFetch });
+  await s.call("PUT", "/api/settings", { token: s.admin, body: { requireApproval: false } });
+  const tok = (await s.call("POST", "/api/enroll-tokens", { token: s.admin, body: { label: "P", maxUses: 5 } })).body.token;
+  const enroll = async (n: string) => (await s.call("POST", "/api/device/enroll", { body: { enrollToken: tok, serial: n, androidId: n, model: "m", osVersion: "o" } })).body;
+  const a = await enroll("A1"), b = await enroll("B1");
+  const beat = (d: any) => s.call("POST", "/api/device/heartbeat", { token: d.deviceToken, body: { status: { deviceOwner: true, pushConnected: true } } });
+  await beat(a); await beat(b);
+  const states = async () => Object.fromEntries((await s.call("GET", "/api/devices", { token: s.admin })).body.map((d: any) => [d.serial, `${d.state}${d.live ? "+live" : ""}`]));
+  const setPing = (lastAgo: number, prevAgo: number) => s.pg.query("INSERT INTO settings(key,value) VALUES('ping_at',$1),('ping_prev',$2) ON CONFLICT(key) DO UPDATE SET value=excluded.value", [String(Date.now() - lastAgo), String(prevAgo ? Date.now() - prevAgo : 0)]);
+  const seen = (d: any, ago: number) => s.pg.query("UPDATE devices SET last_seen=$1 WHERE id=$2", [Date.now() - ago, d.id]);
+
+  // first look: one broadcast to both phones; nothing can be judged yet, so both keep their state
+  sent.length = 0;
+  assert.deepEqual(await states(), { A1: "online+live", B1: "online+live" });
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].messages.length, 2);
+  assert.equal(sent[0].messages[0].event, "wake");
+  // looking again right away does not ping again
+  await states();
+  assert.equal(sent.length, 1);
+
+  // 20 s after a ping: A answered (checked in after it), B did not (last seen 5 min ago, well inside the old window)
+  await setPing(20_000, 0); await seen(a, 18_000); await seen(b, 300_000);
+  assert.deepEqual(await states(), { A1: "online+live", B1: "stale" });
+  const ov = (await s.call("GET", "/api/overview", { token: s.admin })).body;
+  assert.equal(ov.online, 1); assert.equal(ov.stale, 1); assert.equal(ov.live, 1);
+
+  // a new ping 3 s ago is too fresh to judge, so the previous one (40 s ago) decides: still A yes, B no
+  await setPing(3_000, 40_000); await seen(a, 38_000);
+  assert.deepEqual(await states(), { A1: "online+live", B1: "stale" });
+  // B comes back and checks in: online again at once
+  await beat(b);
+  assert.deepEqual(await states(), { A1: "online+live", B1: "online+live" });
+
+  // nobody has looked for a long time: the last ping proves nothing, the check-in window decides (and a new ping goes out)
+  await setPing(600_000, 660_000); await seen(a, 500_000); await seen(b, 500_000); sent.length = 0;
+  assert.deepEqual(await states(), { A1: "online+live", B1: "online+live" });
+  assert.equal(sent.length, 1);
+
+  // a phone without the instant channel cannot answer pings, so only its check-in window counts
+  await s.call("POST", "/api/device/heartbeat", { token: b.deviceToken, body: { status: { deviceOwner: true, pushConnected: false } } });
+  await setPing(20_000, 0); await seen(a, 18_000); await seen(b, 300_000);
+  assert.deepEqual(await states(), { A1: "online+live", B1: "online" });
 });
 
 test("instant push is optional: no config means no channel, and a failing Supabase never breaks the dashboard", async () => {
