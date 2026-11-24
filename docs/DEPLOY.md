@@ -8,16 +8,16 @@ Phones check in straight through PostgREST (`kiosk_heartbeat`), so the function 
 |---|---|
 | Project | `confiance-kiosk`, ref `qzkoowbcngcdnhqystwz`, region eu-west-3 (Paris) |
 | API / function | `https://qzkoowbcngcdnhqystwz.supabase.co/functions/v1/kiosk` |
-| Dashboard | `https://confiance-kiosk-console.jim-bakoume.workers.dev` on Cloudflare (static files + a Worker that proxies `/api` → the function); the older `https://confiance-kiosk-console.netlify.app` copy still exists |
+| Dashboard | `https://confiance-kiosk.jim-bakoume.workers.dev` on Cloudflare (static files + a Worker that proxies `/api` → the function) |
 | APK downloads | `https://qzkoowbcngcdnhqystwz.supabase.co/storage/v1/object/public/apk/kiosk-agent.apk` |
 
 Supabase does not let a function on `*.supabase.co` serve HTML (it rewrites it to plain text), so the console's files
-are hosted on a static host and talk to the function. Two free options are wired up:
+are hosted elsewhere and talk to the function. Two free options are wired up:
 
-1. **Netlify (default).** `netlify.toml` publishes `public/` and proxies `/api/*`, `/apk/*` and `/healthz` to the
-   function at the CDN level: no Netlify functions, no invocation cost, same-origin cookies, and phones still running
-   agent 1.3.x (which only know the Netlify address) keep working. Deploy with `netlify deploy --prod --dir=public`
-   or connect the repository.
+1. **Cloudflare Workers (the one in use).** The `cloudflare/` project serves `public/` and proxies `/api/*`, `/apk/*`
+   and `/healthz` to the function, so the page is same-origin and uses cookies. See "Dashboard on Cloudflare Workers"
+   below. Netlify did the same job until 24 November 2026 and is retired: `netlify.toml` now only redirects the old
+   address (`confiance-kiosk-console.netlify.app`) to the Cloudflare one for as long as that Netlify site exists.
 2. **GitHub Pages.** `.github/workflows/pages.yml` publishes `public/` with `<meta name="kiosk-api">` pointing at the
    function (the console then signs in with a bearer token). Enable it once (repository **Settings → Pages → Source:
    GitHub Actions**), then run the workflow from the Actions tab; it is manual until Pages is enabled. Any other static
@@ -53,7 +53,7 @@ Optional:
 ## Deploying changes
 - API: `supabase functions deploy kiosk --no-verify-jwt`.
 - Database: add a file under `supabase/migrations/`, then `supabase db push`.
-- Dashboard: deploy `public/` to the static host (Netlify: push or `netlify deploy`; GitHub Pages: push).
+- Dashboard: `cd cloudflare && npm ci && npx cf deploy` (Cloudflare); GitHub Pages redeploys on push.
 - Phones: build the APK, upload it on the **Apps** page; phones update themselves.
 
 ## Capacity and cost (free plan)
@@ -84,7 +84,7 @@ The `cloudflare/` folder is a small Workers project: the files of `public/` as s
 `cloudflare/src/worker.ts` in front of them. The Worker sets the security headers, proxies `/api/*`, `/apk/*` and
 `/healthz` to the Supabase function (adding `x-region` so the function runs next to its database, and passing the
 visitor's address so sign-in throttling stays per visitor), and redirects `/kiosk-agent.apk` to Storage. The page
-is therefore same-origin, like on Netlify, and needs no CORS entry.
+is therefore same-origin and needs no CORS entry.
 
 Deploy after any change under `public/` or `cloudflare/`:
 

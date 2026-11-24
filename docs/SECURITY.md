@@ -3,7 +3,7 @@
 ## Dashboard
 - Sign-in: password (12+ characters, scrypt-hashed) plus optional **two-factor codes** (authenticator app, with one-time
   recovery codes). Settings → *Require two-factor for all users* enforces it.
-- Sessions: HttpOnly, SameSite=Strict, Secure cookies, 12 h, when the console is served next to the API (Netlify proxy); a
+- Sessions: HttpOnly, SameSite=Strict, Secure cookies, 12 h, when the console is served next to the API (the Cloudflare Worker proxies it); a
   console hosted elsewhere (GitHub Pages) keeps a bearer token in the browser instead and sends no cookies. Changing your
   password or two-factor settings signs out all other sessions. Cookie-based changes must carry a custom header (CSRF).
 - Brute-force protection: 8 failed sign-ins lock that address/account for 5 minutes. Failures are logged with the address.
@@ -33,7 +33,7 @@
 ## What you must protect
 - The **signing keystore** (`kiosk-release-2026-11.keystore` + its password, held by the product owner, see PROVISIONING.md): whoever holds it can ship an app that phones will accept.
 - The **dashboard admin accounts** (turn on two-factor) and the **enrolment QR** until its expiry.
-- Supabase account access (database, storage and the function's secrets) and the static-hosting account (Netlify/GitHub).
+- Supabase account access (database, storage and the function's secrets) and the hosting accounts (Cloudflare, GitHub).
 
 ## Known limits
 - Recovering a phone that is offline and unusable needs a physical factory reset from the recovery menu (needs the phone in hand).
