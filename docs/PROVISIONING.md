@@ -19,11 +19,18 @@ safe-mode, factory reset, USB debugging and installing/removing apps are blocked
 The QR contains the SHA-256 of the app's signing certificate so Android can verify the download.
 For the supplied build it is in `releases/kiosk-agent-1.4.0.txt` (1.3.4 was signed with a different key: see `releases/kiosk-agent-1.3.4.txt`). For your own build:
 ```bash
-keytool -list -v -keystore kiosk-release.keystore -alias kiosk | grep SHA256
+keytool -list -v -keystore kiosk-release-2026-11.keystore -alias kiosk | grep SHA256
 # convert the hex to base64url (no padding):
 python3 -c "import base64,binascii,sys;print(base64.urlsafe_b64encode(binascii.unhexlify(sys.argv[1].replace(':',''))).decode().rstrip('='))" AA:BB:...
 ```
 **Always sign updates with the same keystore**, otherwise devices will refuse the update. Keep the keystore and its password safe and backed up.
+
+**Where the key is.** The current key is `kiosk-release-2026-11.keystore` (alias `kiosk`, created 2026-11-24, first used for
+agent 1.4.13, QR checksum `EJvptcdLfPrGnpfbPlDgiVHwepjDE7u7GguXY5LQAbA`). It is never committed; the product owner holds the
+file and its password and keeps two offline copies. The previous key (2026-10-08, agents 1.4.0 to 1.4.12) existed only in a
+build machine's temporary folder and was lost with it, which forced every phone to be set up again: a build machine is not
+a place to keep the key. A phone still running an app signed with an older key cannot update; release it from the
+dashboard (or factory-reset it) and set it up again, the USB script removes the old app by itself once it is released.
 
 ## If the QR setup fails: USB setup
 See `USB_SETUP.md` (a script that sets up phones plugged into a PC; works even when Google blocks QR setup).

@@ -1,0 +1,8 @@
+Package:            com.cofilo.kiosk
+App name:           Confiance Kiosk
+Admin component:    com.cofilo.kiosk/.AdminReceiver
+Version:            1.4.13 (code 26)
+Cert SHA-256 (QR):  EJvptcdLfPrGnpfbPlDgiVHwepjDE7u7GguXY5LQAbA
+Signed with:        kiosk-release-2026-11.keystore (alias kiosk), created 2026-11-24. NEW KEY: the 2026-10-08 key was lost, so phones running 1.4.12 or older cannot update to this build; they must be released (or factory-reset) and set up again.
+SHA-256 (APK):      27b0c8d6458d875b55a9ca708fa8df6937971186e416123bd9b8c5954f2704bb
+Changes:            stays reachable with the screen off (partial wake lock); reconnects the instant channel the moment the network returns or changes; dead links noticed within seconds; the Online chip on the home screen reflects the real connection
