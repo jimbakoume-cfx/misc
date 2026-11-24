@@ -21,7 +21,7 @@ android {
         versionCode = 26
         versionName = "1.4.13"
         // Servers the USB setup may point a phone at (comma-separated hosts; empty = any https host).
-        buildConfigField("String", "ALLOWED_SERVER_HOSTS", "\"qzkoowbcngcdnhqystwz.supabase.co,confiance-kiosk-console.netlify.app,jimbakoume-cfx.github.io\"")
+        buildConfigField("String", "ALLOWED_SERVER_HOSTS", "\"qzkoowbcngcdnhqystwz.supabase.co,confiance-kiosk.jim-bakoume.workers.dev,jimbakoume-cfx.github.io\"")
     }
 
     buildFeatures { buildConfig = true }

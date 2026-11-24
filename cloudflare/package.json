@@ -1,5 +1,5 @@
 {
-  "name": "confiance-kiosk-console",
+  "name": "confiance-kiosk",
   "private": true,
   "type": "module",
   "scripts": {
