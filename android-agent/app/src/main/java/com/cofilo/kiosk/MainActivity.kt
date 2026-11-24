@@ -227,7 +227,11 @@ class MainActivity : Activity() {
             setPadding(dp(12), 0, 0, 0)
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         if (p.enrolled) {
-            val fresh = p.lastCheckIn > 0 && System.currentTimeMillis() - p.lastCheckIn < 12 * 60_000
+            // Online = a network is up AND the dashboard can reach this phone: either the instant channel is joined, or
+            // the last check-in is no older than one interval (phones without the channel). No network: offline at once.
+            val hasNet = runCatching { DeviceInfo.networkType(ctx) }.getOrDefault("none") != "none"
+            val recent = p.lastCheckIn > 0 && System.currentTimeMillis() - p.lastCheckIn < p.intervalSec * 1000L + 120_000
+            val fresh = hasNet && (PushClient.connected || recent)
             top.addView(
                 if (fresh) Ui.chip(ctx, "● " + tr("Online", "En ligne"), Ui.good, Ui.goodBg)
                 else Ui.chip(ctx, "● " + tr("Offline", "Hors ligne"), Ui.warn, Ui.warnBg)

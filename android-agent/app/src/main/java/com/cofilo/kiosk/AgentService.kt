@@ -8,6 +8,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.media.AudioAttributes
+import android.net.ConnectivityManager
+import android.net.Network
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.RingtoneManager
@@ -40,7 +42,13 @@ class AgentService : Service() {
     @Volatile private var running = false
     private var worker: Thread? = null
     private val wakeSignal = java.util.concurrent.Semaphore(0)
-    private val push = PushClient { wakeSignal.release() }
+    private val push = PushClient(
+        onState = { sendBroadcast(Intent(Policy.ACTION_STATE_CHANGED).setPackage(packageName)) },
+        onWake = { wakeSignal.release() },
+    )
+    /** Keeps the processor awake so the instant channel survives a dark screen (see [stayReachable]). */
+    private var keepAwake: PowerManager.WakeLock? = null
+    private var netCallback: ConnectivityManager.NetworkCallback? = null
     private val pendingAcks = JSONArray()
     private var lastPolicyVersion = -1
     /** Non-fatal problem met inside the current tick (managed-app install); becomes `status.lastError`. */
@@ -60,8 +68,41 @@ class AgentService : Service() {
             worker = thread(name = "kiosk-agent", isDaemon = true) { loop() }
             instance = this
             watchAutoBlocker()
+            stayReachable()
         }
         return START_STICKY
+    }
+
+    /**
+     * Without this the phone falls asleep a minute after its screen goes dark: timers stop, the instant channel dies
+     * silently and the dashboard can only reach the phone at its next check-in. A partial wake lock keeps the
+     * processor (not the screen) running; the app is exempt from battery optimisation, so it also holds in Doze.
+     * A network callback reconnects the channel the moment the network comes back or changes (Wi-Fi to cellular).
+     */
+    private fun stayReachable() {
+        runCatching {
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            keepAwake = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "kiosk:reachable").apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        }.onFailure { Log.w(TAG, "wake lock: ${it.message}") }
+        runCatching {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val cb = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    push.kick()
+                    wakeSignal.release()   // check in now: commands queued while offline run at once
+                    sendBroadcast(Intent(Policy.ACTION_STATE_CHANGED).setPackage(packageName))
+                }
+                override fun onLost(network: Network) {
+                    push.drop()
+                    sendBroadcast(Intent(Policy.ACTION_STATE_CHANGED).setPackage(packageName))
+                }
+            }
+            cm.registerDefaultNetworkCallback(cb)
+            netCallback = cb
+        }.onFailure { Log.w(TAG, "network callback: ${it.message}") }
     }
 
     override fun onDestroy() {
@@ -71,6 +112,10 @@ class AgentService : Service() {
         main.post { stopRinging() }
         if (instance === this) instance = null
         runCatching { contentResolver.unregisterContentObserver(autoBlockerObserver) }
+        runCatching { netCallback?.let { (getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager).unregisterNetworkCallback(it) } }
+        netCallback = null
+        runCatching { keepAwake?.release() }
+        keepAwake = null
         super.onDestroy()
     }
 
