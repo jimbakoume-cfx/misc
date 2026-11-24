@@ -31,7 +31,7 @@
   name could only make that phone check in early; commands, policy and data are only ever served over the authenticated API.
 
 ## What you must protect
-- The **signing keystore** (`kiosk-release.keystore` + its password): whoever holds it can ship an app that phones will accept.
+- The **signing keystore** (`kiosk-release-2026-11.keystore` + its password, held by the product owner, see PROVISIONING.md): whoever holds it can ship an app that phones will accept.
 - The **dashboard admin accounts** (turn on two-factor) and the **enrolment QR** until its expiry.
 - Supabase account access (database, storage and the function's secrets) and the static-hosting account (Netlify/GitHub).
 

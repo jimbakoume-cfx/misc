@@ -34,6 +34,17 @@ for S in $DEVICES; do
   MODEL=$("$ADB" -s "$S" shell getprop ro.product.model | tr -d '\r')
   echo; echo "=== $MODEL ($S)"
   OUT=$("$ADB" -s "$S" install -r "$APK" 2>&1)
+  if echo "$OUT" | grep -qE "UPDATE_INCOMPATIBLE|signatures do not match|INCONSISTENT_CERTIFICATES"; then
+    # An older copy signed with the previous key is on the phone: it has to go before the new one can be installed.
+    echo "An older Confiance Kiosk (previous signing key) is installed: removing it first..."
+    UN=$("$ADB" -s "$S" uninstall "$PKG" 2>&1)
+    if ! echo "$UN" | grep -q Success; then
+      echo "The old app is still managing this phone, so it cannot be removed: $UN"
+      echo "Either press 'Release & remove' for this phone on the dashboard, wait until the phone unlocks, switch USB debugging on again and run this again; or factory-reset the phone, skip every account step, and run this again."
+      continue
+    fi
+    OUT=$("$ADB" -s "$S" install -r "$APK" 2>&1)
+  fi
   echo "$OUT" | grep -q Success || { echo "Install failed: $OUT"; echo "If the phone asked about Play Protect or install via USB, accept it and run again."; continue; }
   OUT=$("$ADB" -s "$S" shell dpm set-device-owner "$PKG/.AdminReceiver" 2>&1)
   if ! echo "$OUT" | grep -q Success; then

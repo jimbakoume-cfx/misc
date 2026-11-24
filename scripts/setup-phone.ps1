@@ -53,6 +53,17 @@ foreach ($s in $ready) {
   $model = Run $s @("shell", "getprop", "ro.product.model")
   Say "`n=== $model ($s)" Cyan
   $out = Run $s @("install", "-r", $apk)
+  if ($out -match "UPDATE_INCOMPATIBLE|signatures do not match|INCONSISTENT_CERTIFICATES") {
+    # An older copy signed with the previous key is on the phone: it has to go before the new one can be installed.
+    Say "An older Confiance Kiosk (previous signing key) is installed: removing it first..." Yellow
+    $un = Run $s @("uninstall", $Package)
+    if ($un -notmatch "Success") {
+      Say "The old app is still managing this phone, so it cannot be removed: $un" Red
+      Say "Either press 'Release & remove' for this phone on the dashboard, wait until the phone unlocks, switch USB debugging on again and run this again; or factory-reset the phone, skip every account step, and run this again." Yellow
+      continue
+    }
+    $out = Run $s @("install", "-r", $apk)
+  }
   if ($out -notmatch "Success") { Say "Install failed: $out" Red; Say "If the phone showed a Play Protect or 'install via USB' question, accept it and run again." Yellow; continue }
   $out = Run $s @("shell", "dpm", "set-device-owner", "$Package/.AdminReceiver")
   if ($out -notmatch "Success") {
