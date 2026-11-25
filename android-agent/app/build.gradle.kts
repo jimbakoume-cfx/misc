@@ -18,8 +18,8 @@ android {
         applicationId = "com.cofilo.kiosk"
         minSdk = 26
         targetSdk = 34
-        versionCode = 26
-        versionName = "1.4.13"
+        versionCode = 27
+        versionName = "1.4.14"
         // Servers the USB setup may point a phone at (comma-separated hosts; empty = any https host).
         buildConfigField("String", "ALLOWED_SERVER_HOSTS", "\"qzkoowbcngcdnhqystwz.supabase.co,confiance-kiosk.pages.dev,jimbakoume-cfx.github.io\"")
     }

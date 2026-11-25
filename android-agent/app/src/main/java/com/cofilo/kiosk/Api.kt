@@ -74,15 +74,32 @@ object Api {
     }
 
     /** Downloads [url] to [dest] and returns its lowercase hex SHA-256. */
-    fun download(url: String, dest: File): String {
+    /**
+     * Streams [url] into [dest] and returns its SHA-256. With [resume], bytes already in [dest] (a download the
+     * network cut) are kept and only the rest is asked for; a server that ignores the range sends the whole file.
+     */
+    fun download(url: String, dest: File, resume: Boolean = false): String {
+        val have = if (resume && dest.exists()) dest.length() else 0L
         val conn = URL(url).openConnection() as HttpURLConnection
         try {
             conn.connectTimeout = 15_000
             conn.readTimeout = 60_000
-            if (conn.responseCode !in 200..299) throw ApiException(conn.responseCode, "download failed")
+            if (have > 0) {
+                conn.setRequestProperty("Range", "bytes=$have-")
+                conn.setRequestProperty("Accept-Encoding", "identity")
+            }
+            val code = conn.responseCode
             val md = MessageDigest.getInstance("SHA-256")
+            if (have > 0 && code == 416) {
+                // Nothing left to send: the file was already complete.
+                dest.inputStream().use { input -> val b = ByteArray(64 * 1024); while (true) { val n = input.read(b); if (n < 0) break; md.update(b, 0, n) } }
+                return md.digest().joinToString("") { "%02x".format(it) }
+            }
+            if (code !in 200..299) throw ApiException(code, "download failed")
+            val append = have > 0 && code == 206
+            if (append) dest.inputStream().use { input -> val b = ByteArray(64 * 1024); while (true) { val n = input.read(b); if (n < 0) break; md.update(b, 0, n) } }
             conn.inputStream.use { input ->
-                dest.outputStream().use { out ->
+                java.io.FileOutputStream(dest, append).use { out ->
                     val buf = ByteArray(64 * 1024)
                     while (true) {
                         val n = input.read(buf)

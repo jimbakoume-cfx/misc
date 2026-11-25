@@ -137,12 +137,14 @@ class AgentService : Service() {
     private fun loop() {
         // Re-apply the lockdown at every service start (boot, update, crash recovery).
         runCatching { Policy.apply(this) }
+        // A refused self-update is tried again from scratch after a restart: its old message would only mislead.
+        Prefs(this).let { if (it.installError.startsWith("install $packageName")) it.installError = "" }
         while (running) {
             val prefs = Prefs(this)
             wakeSignal.drainPermits()
             tickError = ""
             runCatching { tick() }
-                .onSuccess { prefs.lastError = tickError }
+                .onSuccess { prefs.lastError = tickError.ifEmpty { prefs.installError } }
                 .onFailure {
                     Log.w(TAG, "tick failed: ${it.message}")
                     prefs.lastError = "${it.javaClass.simpleName}: ${it.message}".take(200)
@@ -415,9 +417,13 @@ class AgentService : Service() {
     /** Downloads, verifies and silently installs [pkg]. Throws with a short reason on any failure. */
     private fun installApp(pkg: String, url: String, sha256: String) {
         if (pkg.isBlank() || !url.startsWith("https://") || sha256.isBlank()) throw IllegalArgumentException("bad install payload")
-        val file = File(cacheDir, "install-" + pkg.replace(Regex("[^A-Za-z0-9._-]"), "_") + ".apk")
+        // Named after the content, so a download cut by the network continues where it stopped (a big app over
+        // mobile data is not fetched from zero again) and a new version never continues an old file.
+        val file = File(cacheDir, "install-" + sha256.take(24).replace(Regex("[^A-Za-z0-9]"), "") + ".apk")
+        cacheDir.listFiles { f -> f.name.startsWith("install-") && f.name != file.name }?.forEach { it.delete() }
+        var keep = false
         try {
-            val actual = Api.download(url, file)
+            val actual = try { Api.download(url, file, resume = true) } catch (e: java.io.IOException) { keep = true; throw e }
             if (!actual.equals(sha256, ignoreCase = true)) throw IllegalStateException("checksum mismatch")
             val info = packageManager.getPackageArchiveInfo(file.path, 0)
                 ?: throw IllegalStateException("invalid apk")
@@ -425,8 +431,8 @@ class AgentService : Service() {
             Installer.install(this, file, pkg)
             Log.i(TAG, "install committed: $pkg")
         } finally {
-            // The session holds its own copy once commit() returned.
-            runCatching { file.delete() }
+            // The session holds its own copy once commit() returned; only an interrupted download is kept.
+            if (!keep) runCatching { file.delete() }
         }
     }
 
@@ -435,6 +441,12 @@ class AgentService : Service() {
      * more than an hour ago. One install per check-in; a failure is reported as `status.lastError`.
      */
     private fun maintainApps(prefs: Prefs, list: JSONArray?) {
+        // An app that is no longer asked for cannot stay "refused" on the dashboard.
+        prefs.installError.let { err ->
+            val about = err.removePrefix("install ").substringBefore(' ').trimEnd(':')
+            val wanted = (0 until (list?.length() ?: 0)).any { list?.optJSONObject(it)?.str("pkg") == about }
+            if (err.startsWith("install ") && about != packageName && !wanted) prefs.installError = ""
+        }
         if (list == null || list.length() == 0) return
         val attempts = prefs.installAttempts
         val now = System.currentTimeMillis()
@@ -446,9 +458,16 @@ class AgentService : Service() {
             val installed = DeviceInfo.installedVersionCode(this, pkg)
             if (installed >= 0 && installed >= wanted) continue
             val last = attempts.optLong(pkg, 0L)
-            if (last in 1..now && now - last < INSTALL_RETRY_MS) continue
+            // A file the phone itself refused is retried after 1 h, then 4 h, 16 h and daily: downloading it again
+            // every hour would only burn mobile data. A new version (another checksum) starts afresh.
+            val fails = prefs.installFails
+            val f = fails.optJSONObject(pkg)
+            val refused = if (f != null && f.optString("sha") == e.str("sha256")) f.optInt("n") else 0
+            val pause = minOf(INSTALL_RETRY_MS shl (2 * minOf(refused, 3)), 24 * 60 * 60_000L)
+            if (last in 1..now && now - last < pause) continue
             attempts.put(pkg, now)
             prefs.installAttempts = attempts
+            prefs.installFails = fails.put(pkg, JSONObject().put("sha", e.str("sha256")).put("n", refused))
             try {
                 installApp(pkg, e.str("url"), e.str("sha256"))
             } catch (t: Throwable) {
