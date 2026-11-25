@@ -127,6 +127,7 @@ object DeviceInfo {
             .put("signal", signalLevel(ctx))
             .put("usageAccess", hasUsageAccess(ctx))
             .put("autoBlocker", runCatching { Policy.autoBlockerStatus(ctx) }.getOrDefault(""))
+            .put("appScan", runCatching { Policy.appScanStatus(ctx) }.getOrDefault(""))
             .put("batteryExempt", runCatching { (ctx.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager).isIgnoringBatteryOptimizations(ctx.packageName) }.getOrDefault(false))
             .put("lostMode", prefs.lostMode)
             .put("lang", prefs.lang.ifEmpty { Locale.getDefault().language })

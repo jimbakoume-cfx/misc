@@ -34,6 +34,8 @@ object Installer {
                     session.fsync(out)
                 }
             }
+            // Another app than this one is new to the phone: see Policy.pauseAppScan.
+            if (pkg != ctx.packageName) runCatching { Policy.pauseAppScan(ctx) }
             val intent = Intent(ctx, InstallResultReceiver::class.java).putExtra("pkg", pkg)
             val pending = PendingIntent.getBroadcast(
                 ctx, id, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
@@ -50,6 +52,8 @@ class InstallResultReceiver : BroadcastReceiver() {
         val pkg = intent.getStringExtra("pkg")
         Log.i("KioskInstaller", "install $pkg status=$status msg=$msg")
         val prefs = Prefs(context)
+        // The install is over, whatever its result: the scan of new apps goes back on.
+        if (status != PackageInstaller.STATUS_PENDING_USER_ACTION) runCatching { Policy.resumeAppScan(context) }
         when (status) {
             PackageInstaller.STATUS_SUCCESS -> {
                 if (prefs.lastError.startsWith("install ")) prefs.lastError = ""
