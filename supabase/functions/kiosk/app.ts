@@ -815,24 +815,52 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
     (await all("SELECT * FROM managed_apps ORDER BY pkg, version_code DESC, id DESC")).map((m) => ({
       id: m.id, pkg: m.pkg, label: m.label, versionCode: m.version_code, versionName: m.version_name, sha256: m.sha256, size: m.size, createdAt: m.created_at,
     })));
+  /** Records an app file that is already in storage under `<sha256>.apk` and tells the phones concerned. */
+  async function saveManaged(actor: string, f: { digest: string; size: number; pkg: string; label: string; versionCode: number; versionName: string }) {
+    const label = f.label.trim().slice(0, 60) || f.pkg;
+    const versionName = f.versionName.trim().slice(0, 30) || String(f.versionCode);
+    const dup = await get("SELECT id FROM managed_apps WHERE sha256=?", f.digest);
+    if (dup) await run("UPDATE managed_apps SET pkg=?, label=?, version_code=?, version_name=? WHERE id=?", f.pkg, label, f.versionCode, versionName, dup.id);
+    else await run("INSERT INTO managed_apps(pkg,label,version_code,version_name,sha256,size,created_at) VALUES(?,?,?,?,?,?,?)", f.pkg, label, f.versionCode, versionName, f.digest, f.size, now());
+    await bumpEpoch();
+    await audit(actor, "upload-app", `${label} ${versionName} (${f.versionCode})`);
+    // Every phone gets the ping: the app may be allowed fleet-wide, by a group or for one phone.
+    await wakeAll();
+    const affected = await all("SELECT d.id FROM devices d LEFT JOIN device_groups g ON g.id=d.group_id WHERE COALESCE(d.allowed_override, g.allowed_apps, '[]') LIKE ?", `%"${f.pkg}"%`);
+    return { ok: true, sha256: f.digest, devices: affected.length };
+  }
+  const managedFields = (pkg: unknown, versionCode: unknown) => {
+    const p = String(pkg ?? "").trim(), v = num(versionCode);
+    if (!/^[A-Za-z0-9_.]+$/.test(p) || !v) throw new HttpError(400, "pkg and versionCode required");
+    return { pkg: p, versionCode: v };
+  };
+  // Small files can still be sent in one request (the file is the body).
   add("PUT", "/api/managed-apps", "write", async (c) => {
     const body = await c.req.arrayBuffer();
     if (body.byteLength < 1000) throw new HttpError(400, "Send the APK as the request body");
-    const pkg = (c.query.get("pkg") ?? "").trim();
-    const versionCode = num(c.query.get("versionCode"));
-    if (!/^[A-Za-z0-9_.]+$/.test(pkg) || !versionCode) throw new HttpError(400, "pkg and versionCode required");
+    const f = managedFields(c.query.get("pkg"), c.query.get("versionCode"));
     const digest = sha256Buf(body);
     await blobs.set(`${digest}.apk`, body, "application/vnd.android.package-archive");
-    const label = (c.query.get("label") ?? "").trim().slice(0, 60) || pkg;
-    const versionName = (c.query.get("versionName") ?? "").trim().slice(0, 30) || String(versionCode);
-    const dup = await get("SELECT id FROM managed_apps WHERE sha256=?", digest);
-    if (dup) await run("UPDATE managed_apps SET pkg=?, label=?, version_code=?, version_name=? WHERE id=?", pkg, label, versionCode, versionName, dup.id);
-    else await run("INSERT INTO managed_apps(pkg,label,version_code,version_name,sha256,size,created_at) VALUES(?,?,?,?,?,?,?)", pkg, label, versionCode, versionName, digest, body.byteLength, now());
-    await bumpEpoch();
-    await audit(who(c), "upload-app", `${label} ${versionName} (${versionCode})`);
-    const affected = (await all("SELECT d.id FROM devices d LEFT JOIN device_groups g ON g.id=d.group_id WHERE COALESCE(d.allowed_override, g.allowed_apps, '[]') LIKE ?", `%"${pkg}"%`)).map((r) => r.id);
-    await wake(affected);
-    return { ok: true, sha256: digest, devices: affected.length };
+    return saveManaged(who(c), { ...f, digest, size: body.byteLength, label: c.query.get("label") ?? "", versionName: c.query.get("versionName") ?? "" });
+  });
+  // Bigger files never pass through this function, which has to answer within 150 seconds: the dashboard asks for a
+  // one-time upload address, sends the file straight to storage, then registers it with POST /api/managed-apps.
+  add("POST", "/api/uploads", "write", async () => {
+    if (!blobs.signUpload) throw new HttpError(409, "Direct uploads are not available on this deployment");
+    const key = `incoming/${randomToken(18)}.apk`;
+    return { key, url: await blobs.signUpload(key) };
+  });
+  add("POST", "/api/managed-apps", "write", async (c) => {
+    const key = String(c.body.key ?? "");
+    if (!/^incoming\/[A-Za-z0-9_-]{16,}\.apk$/.test(key)) throw new HttpError(400, "Unknown upload");
+    const f = managedFields(c.body.pkg, c.body.versionCode);
+    const data = await blobs.get(key);
+    if (!data || data.byteLength < 1000) throw new HttpError(400, "The file did not arrive. Send it again.");
+    const digest = sha256Buf(data);
+    // One stored copy per content, named after its checksum (phones verify it before installing).
+    try { if (!blobs.move) throw new Error("no move"); await blobs.move(key, `${digest}.apk`); }
+    catch { await blobs.set(`${digest}.apk`, data, "application/vnd.android.package-archive"); await blobs.remove?.([key]); }
+    return saveManaged(who(c), { ...f, digest, size: data.byteLength, label: String(c.body.label ?? ""), versionName: String(c.body.versionName ?? "") });
   });
   add("DELETE", "/api/managed-apps/:id", "write", async (c) => {
     const m = await get("SELECT * FROM managed_apps WHERE id=?", Number(c.params.id));
@@ -840,8 +868,19 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
     await run("DELETE FROM managed_apps WHERE id=?", m.id);
     await bumpEpoch();
     await audit(who(c), "delete-app", `${m.label} ${m.version_name}`);
+    await cleanStorage().catch((e) => console.warn("storage cleanup failed:", (e as Error).message));
     return { ok: true };
   });
+
+  /** Frees storage: uploads that were never registered (older than a day) and app files no row points at any more. */
+  async function cleanStorage() {
+    if (!blobs.list || !blobs.remove) return 0;
+    const used = new Set((await all("SELECT sha256 FROM releases UNION SELECT sha256 FROM managed_apps")).map((r) => `${r.sha256}.apk`));
+    const stale = (await blobs.list("incoming")).filter((o) => now() - o.createdAt > 86_400_000).map((o) => `incoming/${o.name}`);
+    const orphans = (await blobs.list("")).filter((o) => /^[0-9a-f]{64}\.apk$/.test(o.name) && !used.has(o.name) && now() - o.createdAt > 3_600_000).map((o) => o.name);
+    await blobs.remove([...stale, ...orphans]);
+    return stale.length + orphans.length;
+  }
 
   // enrollment tokens + QR
   add("GET", "/api/enroll-tokens", "read", async () =>
@@ -940,8 +979,9 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
     const bad = num((await get("SELECT COUNT(*)::int n FROM audit WHERE action='login-failed' AND ts>?", now() - 3_600_000))?.n);
     if (bad > 20) await run("SELECT kiosk_alert(NULL, 'security', ?)", `${bad} failed sign-ins in the last hour`);
     else await run("UPDATE alerts SET active=0, cleared_at=? WHERE device_id IS NULL AND kind='security' AND active=1", now());
+    const cleaned = await cleanStorage().catch((e) => { console.warn("storage cleanup failed:", (e as Error).message); return 0; });
     const mail = await emailAlerts();
-    return { ok: true, ...mail };
+    return { ok: true, cleaned, ...mail };
   });
 
   // settings

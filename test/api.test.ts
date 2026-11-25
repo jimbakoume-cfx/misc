@@ -11,10 +11,18 @@ async function makeApp(opts: { seed?: Seed; env?: Record<string, string>; fetch?
   const dir = new URL("../supabase/migrations/", import.meta.url);
   for (const m of readdirSync(dir).sort()) await pg.exec(readFileSync(new URL(m, dir), "utf8"));
   const blobs = new Map<string, ArrayBuffer>();
+  const born = new Map<string, number>(); // when each stored file was written (the cleanup looks at age)
   const pub = new URL("../public/", import.meta.url);
   const handler = createApp({
     db: { query: async (sql, params) => (await pg.query(sql, params as any[])).rows as any[] },
-    blobs: { get: async (k) => blobs.get(k) ?? null, set: async (k, v) => { blobs.set(k, v); } },
+    blobs: {
+      get: async (k) => blobs.get(k) ?? null,
+      set: async (k, v) => { blobs.set(k, v); born.set(k, Date.now()); },
+      signUpload: async (k) => `https://storage.example.com/upload/${k}?token=t`,
+      move: async (from, to) => { if (blobs.has(to)) throw new Error("exists"); blobs.set(to, blobs.get(from)!); born.set(to, born.get(from) ?? Date.now()); blobs.delete(from); born.delete(from); },
+      remove: async (keys) => { for (const k of keys) { blobs.delete(k); born.delete(k); } },
+      list: async (prefix) => [...blobs.keys()].filter((k) => (prefix ? k.startsWith(prefix + "/") : !k.includes("/"))).map((k) => ({ name: prefix ? k.slice(prefix.length + 1) : k, createdAt: born.get(k) ?? 0 })),
+    },
     assets: { get: (path) => { try { return { type: path.endsWith(".html") ? "text/html" : "text/javascript", body: readFileSync(new URL(`.${path}`, pub)) }; } catch { return null; } } },
     env: { SESSION_SECRET: "test-secret", ADMIN_EMAIL: "Boss@Example.com", ADMIN_PASSWORD: "correct-horse-battery", PUBLIC_URL: "https://kiosk.example.com", ...(opts.env ?? {}) },
     fetch: opts.fetch,
@@ -40,7 +48,7 @@ async function makeApp(opts: { seed?: Seed; env?: Record<string, string>; fetch?
     const key = (await pg.query("SELECT value FROM settings WHERE key='cron_key'")).rows[0] as any;
     return call("POST", "/api/cron", { headers: { "x-cron-key": key.value } });
   };
-  return { call, admin: login.body.token as string, login, callCron, pg };
+  return { call, admin: login.body.token as string, login, callCron, pg, blobs, born };
 }
 
 const { call, admin, login } = await makeApp();
@@ -439,6 +447,56 @@ test("presence: looking at the fleet pings every phone, and one that does not an
   await s.call("POST", "/api/device/heartbeat", { token: b.deviceToken, body: { status: { deviceOwner: true, pushConnected: false } } });
   await setPing(20_000, 0); await seen(a, 18_000); await seen(b, 300_000);
   assert.deepEqual(await states(), { A1: "online+live", B1: "online" });
+});
+
+test("big app files go straight to storage: upload address, registration by key, and cleanup of leftovers", async () => {
+  const s = await makeApp();
+  const up = await s.call("POST", "/api/uploads", { token: s.admin, body: {} });
+  assert.equal(up.status, 200);
+  assert.match(up.body.key, /^incoming\/[A-Za-z0-9_-]{16,}\.apk$/);
+  assert.ok(up.body.url.includes(up.body.key));
+  assert.equal((await s.call("POST", "/api/uploads", { body: {} })).status, 401);
+
+  // nothing arrived yet, a made-up key, or missing details: refused
+  const reg = (body: unknown) => s.call("POST", "/api/managed-apps", { token: s.admin, body });
+  assert.equal((await reg({ key: up.body.key, pkg: "com.confiance.driver", versionCode: 7 })).status, 400);
+  assert.equal((await reg({ key: "../etc/passwd", pkg: "com.confiance.driver", versionCode: 7 })).status, 400);
+
+  // the browser PUTs the file to storage, then registers it
+  const file = new Uint8Array(40_000).fill(7).buffer as ArrayBuffer;
+  s.blobs.set(up.body.key, file);
+  assert.equal((await reg({ key: up.body.key, pkg: "bad pkg", versionCode: 7 })).status, 400);
+  const ok = await reg({ key: up.body.key, pkg: "com.confiance.driver", label: "Confiance Driver", versionName: "2.3.0", versionCode: 7 });
+  assert.equal(ok.status, 200);
+  assert.match(ok.body.sha256, /^[0-9a-f]{64}$/);
+  assert.ok(s.blobs.has(`${ok.body.sha256}.apk`));  // stored under its checksum
+  assert.ok(!s.blobs.has(up.body.key));              // the temporary copy is gone
+  const list = (await s.call("GET", "/api/managed-apps", { token: s.admin })).body;
+  assert.deepEqual(list.map((m: any) => [m.pkg, m.label, m.versionName, m.versionCode, m.size]), [["com.confiance.driver", "Confiance Driver", "2.3.0", 7, 40_000]]);
+  assert.equal((await s.call("GET", `/apk/${ok.body.sha256}.apk`)).status, 200);
+
+  // the same content uploaded again only corrects the record
+  const up2 = (await s.call("POST", "/api/uploads", { token: s.admin, body: {} })).body;
+  s.blobs.set(up2.key, file);
+  assert.equal((await reg({ key: up2.key, pkg: "com.confiance.driver", label: "Driver", versionName: "2.3.1", versionCode: 8 })).status, 200);
+  assert.equal((await s.call("GET", "/api/managed-apps", { token: s.admin })).body.length, 1);
+  assert.ok(!s.blobs.has(up2.key));
+
+  // cleanup: an upload nobody registered (old) and an app file no row points at are removed; fresh ones are kept
+  const orphan = "ab".repeat(32) + ".apk";
+  s.blobs.set("incoming/abandoned-upload-0001.apk", file); s.born.set("incoming/abandoned-upload-0001.apk", Date.now() - 2 * 86_400_000);
+  s.blobs.set("incoming/just-started-upload1.apk", file); s.born.set("incoming/just-started-upload1.apk", Date.now());
+  s.blobs.set(orphan, file); s.born.set(orphan, Date.now() - 2 * 86_400_000);
+  s.born.set(`${ok.body.sha256}.apk`, Date.now() - 2 * 86_400_000);
+  const cron = await s.callCron();
+  assert.equal(cron.body.cleaned, 2);
+  assert.ok(!s.blobs.has("incoming/abandoned-upload-0001.apk") && !s.blobs.has(orphan));
+  assert.ok(s.blobs.has("incoming/just-started-upload1.apk") && s.blobs.has(`${ok.body.sha256}.apk`));
+
+  // deleting the app frees its file
+  const id = (await s.call("GET", "/api/managed-apps", { token: s.admin })).body[0].id;
+  assert.equal((await s.call("DELETE", `/api/managed-apps/${id}`, { token: s.admin })).status, 200);
+  assert.ok(!s.blobs.has(`${ok.body.sha256}.apk`));
 });
 
 test("instant push is optional: no config means no channel, and a failing Supabase never breaks the dashboard", async () => {

@@ -16,6 +16,14 @@ export interface BlobStore {
   set(key: string, data: ArrayBuffer, contentType?: string): Promise<void>;
   /** Public base URL for `${publicBase}/${key}` downloads (CDN with Content-Length and ranges), if any. */
   publicBase?: string;
+  /** One-time address the browser can PUT a file to, so big uploads never pass through the API (which must answer within 150 s). */
+  signUpload?(key: string): Promise<string>;
+  /** Renames a stored file. Throws when the destination already exists. */
+  move?(from: string, to: string): Promise<void>;
+  /** Deletes stored files; missing ones are ignored. */
+  remove?(keys: string[]): Promise<void>;
+  /** Files directly under a folder ("" = top level), with their age. */
+  list?(prefix: string): Promise<{ name: string; createdAt: number }[]>;
   /** Stores one dashboard file (index.html, app.js, …) where `Assets` will read it from; absent when the files ship with the code. */
   setStatic?(path: string, data: ArrayBuffer, contentType: string): Promise<void>;
 }
