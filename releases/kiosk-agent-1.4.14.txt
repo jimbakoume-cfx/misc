@@ -1,0 +1,8 @@
+Package:            com.cofilo.kiosk
+App name:           Confiance Kiosk
+Admin component:    com.cofilo.kiosk/.AdminReceiver
+Version:            1.4.14 (code 27)
+Cert SHA-256 (QR):  EJvptcdLfPrGnpfbPlDgiVHwepjDE7u7GguXY5LQAbA
+Signed with:        kiosk-release-2026-11.keystore (alias kiosk), created 2026-11-24
+SHA-256 (APK):      bb13a5ba574bb6a45eda9b1b5ebfdd016c5867e2a0163d33e1afe631c5c3caae
+Changes:            the reason a phone refuses to install an app stays visible on the dashboard until the app installs (it used to be erased at the next check-in); a file the phone refused is retried after 1 h, 4 h, 16 h, then daily instead of being downloaded again every hour; a download cut by the network continues where it stopped; an app refused by the phone's security check is retried right after the restart

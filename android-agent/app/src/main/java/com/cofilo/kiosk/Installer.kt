@@ -51,16 +51,27 @@ class InstallResultReceiver : BroadcastReceiver() {
         Log.i("KioskInstaller", "install $pkg status=$status msg=$msg")
         val prefs = Prefs(context)
         when (status) {
-            PackageInstaller.STATUS_SUCCESS -> if (prefs.lastError.startsWith("install ")) prefs.lastError = ""
+            PackageInstaller.STATUS_SUCCESS -> {
+                if (prefs.lastError.startsWith("install ")) prefs.lastError = ""
+                prefs.installError = ""
+                prefs.installFails = prefs.installFails.apply { remove(pkg ?: "") }
+            }
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
                 // Android wants the user to confirm: show its dialog instead of dropping the install silently.
                 @Suppress("DEPRECATION") val confirm = intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
                 runCatching { context.startActivity(confirm?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                 prefs.lastError = "install $pkg: waiting for confirmation on the phone"
+                prefs.installError = prefs.lastError
             }
             // Surfaces in the next heartbeat as status.lastError (the commit itself cannot fail synchronously).
             else -> {
                 prefs.lastError = "install $pkg failed ($status): ${msg ?: ""}".take(200)
+                prefs.installError = prefs.lastError
+                // The same file refused again is not worth downloading every hour: AgentService spaces the retries out.
+                prefs.installFails = prefs.installFails.apply {
+                    val f = optJSONObject(pkg ?: "") ?: org.json.JSONObject()
+                    put(pkg ?: "", f.put("n", f.optInt("n") + 1))
+                }
                 if (refusedBySecurityCheck(status, msg)) retryAfterRestart(context, prefs, pkg ?: "")
             }
         }
@@ -85,7 +96,11 @@ class InstallResultReceiver : BroadcastReceiver() {
         Policy.disableAutoBlocker(ctx)
         prefs.lastInstallReboot = System.currentTimeMillis()
         prefs.lastUpdateAttempt = 0L // retry the self-update at the first check-in after boot
+        // ... and the app that was refused: this refusal is the phone's check, not a fault of the file.
+        prefs.installAttempts = prefs.installAttempts.apply { remove(pkg) }
+        prefs.installFails = prefs.installFails.apply { remove(pkg) }
         prefs.lastError = "install $pkg refused by the phone's security check: restarting the phone to retry"
+        prefs.installError = prefs.lastError
         runCatching { Toast.makeText(ctx, Ui.tr("Installing the update: the phone restarts in a few seconds.", "Installation de la mise à jour : le téléphone redémarre dans quelques secondes."), Toast.LENGTH_LONG).show() }
         Handler(Looper.getMainLooper()).postDelayed({
             runCatching { Policy.dpm(ctx).reboot(Policy.admin(ctx)) }

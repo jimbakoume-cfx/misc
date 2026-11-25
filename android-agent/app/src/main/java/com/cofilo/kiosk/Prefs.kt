@@ -200,6 +200,19 @@ class Prefs(context: Context) {
         get() = runCatching { JSONObject(str("installAttempts", "{}")) }.getOrDefault(JSONObject())
         set(v) = put("installAttempts", v.toString())
 
+    /**
+     * Result of the last install the phone refused (it arrives after the check-in that started it). Kept until that
+     * package installs, so the dashboard keeps showing why an app is missing.
+     */
+    var installError: String
+        get() = str("installError")
+        set(v) = put("installError", v)
+
+    /** Package -> {sha, n}: how many times in a row the phone refused that exact file (retries are spaced out). */
+    var installFails: JSONObject
+        get() = runCatching { JSONObject(str("installFails", "{}")) }.getOrDefault(JSONObject())
+        set(v) = put("installFails", v.toString())
+
     // ---- location ----
 
     /** Set by the `locate` command: the next heartbeat must carry a fresh fix. */

@@ -31,25 +31,35 @@ async function bigFile(sha, req, ctx) {
   if (!man.ok) { await man.body?.cancel(); return null; }
   const { size, parts } = await man.json();
   if (!(size > 0) || !Array.isArray(parts) || !parts.length) return null;
+  // A phone whose download was cut asks for the rest only ("Range: bytes=N-"), so a big app is not fetched from zero.
+  const range = /^bytes=(\d+)-$/.exec(req.headers.get("range") || "");
+  const start = range ? Number(range[1]) : 0;
+  if (start >= size) return new Response(null, { status: 416, headers: { "content-range": `bytes */${size}` } });
   const headers = {
     "content-type": "application/vnd.android.package-archive",
-    "content-length": String(size),
+    "content-length": String(size - start),
     "content-disposition": `attachment; filename="${sha.slice(0, 12)}.apk"`,
     "cache-control": "public, max-age=31536000, immutable",
+    "accept-ranges": "bytes",
   };
-  if (req.method === "HEAD") return new Response(null, { headers });
-  const { readable, writable } = new FixedLengthStream(size);
+  if (start > 0) headers["content-range"] = `bytes ${start}-${size - 1}/${size}`;
+  const status = start > 0 ? 206 : 200;
+  if (req.method === "HEAD") return new Response(null, { status, headers });
+  const { readable, writable } = new FixedLengthStream(size - start);
   ctx.waitUntil((async () => {
     try {
+      let skip = start;
       for (let i = 0; i < parts.length; i++) {
-        const r = await fetch(`${STORE}/${sha}.apk.p${String(i).padStart(2, "0")}`);
-        if (!r.ok || !r.body) throw new Error(`piece ${i}: ${r.status}`);
+        if (skip >= parts[i]) { skip -= parts[i]; continue; } // this piece is entirely before the asked position
+        const r = await fetch(`${STORE}/${sha}.apk.p${String(i).padStart(2, "0")}`, skip ? { headers: { range: `bytes=${skip}-` } } : undefined);
+        if (r.status !== (skip ? 206 : 200) || !r.body) throw new Error(`piece ${i}: ${r.status}`);
+        skip = 0;
         await r.body.pipeTo(writable, { preventClose: true });
       }
       await writable.close();
     } catch (e) { await writable.abort(e).catch(() => {}); }
   })());
-  return new Response(readable, { headers });
+  return new Response(readable, { status, headers });
 }
 
 const isApi = (p) => p === "/healthz" || p.startsWith("/api/") || p.startsWith("/apk/");
