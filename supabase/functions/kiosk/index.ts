@@ -46,6 +46,7 @@ async function upload(bucket: string, key: string, data: ArrayBuffer, contentTyp
   });
   if (!r.ok) throw new Error(`storage upload failed: ${r.status} ${await r.text()}`);
 }
+const svc = { authorization: `Bearer ${serviceKey}`, apikey: serviceKey };
 const storage = {
   publicBase: `${supabaseUrl}/storage/v1/object/public/${APK}`,
   async get(key: string): Promise<ArrayBuffer | null> {
@@ -54,6 +55,24 @@ const storage = {
     return r.arrayBuffer();
   },
   set: (key: string, data: ArrayBuffer, contentType = "application/octet-stream") => upload(APK, key, data, contentType),
+  async signUpload(key: string): Promise<string> {
+    const r = await fetch(`${supabaseUrl}/storage/v1/object/upload/sign/${APK}/${key}`, { method: "POST", headers: { ...svc, "content-type": "application/json" }, body: "{}" });
+    if (!r.ok) throw new Error(`storage sign failed: ${r.status} ${await r.text()}`);
+    return `${supabaseUrl}/storage/v1${(await r.json()).url}`;
+  },
+  async move(from: string, to: string) {
+    const r = await fetch(`${supabaseUrl}/storage/v1/object/move`, { method: "POST", headers: { ...svc, "content-type": "application/json" }, body: JSON.stringify({ bucketId: APK, sourceKey: from, destinationKey: to }) });
+    if (!r.ok) throw new Error(`storage move failed: ${r.status} ${await r.text()}`);
+  },
+  async remove(keys: string[]) {
+    if (!keys.length) return;
+    await fetch(`${supabaseUrl}/storage/v1/object/${APK}`, { method: "DELETE", headers: { ...svc, "content-type": "application/json" }, body: JSON.stringify({ prefixes: keys }) }).then((r) => r.body?.cancel());
+  },
+  async list(prefix: string) {
+    const r = await fetch(`${supabaseUrl}/storage/v1/object/list/${APK}`, { method: "POST", headers: { ...svc, "content-type": "application/json" }, body: JSON.stringify({ prefix, limit: 1000, offset: 0 }) });
+    if (!r.ok) return [];
+    return ((await r.json()) as { name: string; id: string | null; created_at: string; metadata?: { size?: number } }[]).filter((o) => o.id).map((o) => ({ name: o.name, createdAt: Date.parse(o.created_at) || 0, size: Number(o.metadata?.size ?? 0) }));
+  },
   setStatic: (path: string, data: ArrayBuffer, contentType: string) => upload(WEB, path.replace(/^\//, ""), data, contentType),
 };
 
@@ -85,6 +104,9 @@ const app = createApp({
     ADMIN_PASSWORD: env("ADMIN_PASSWORD") || undefined,
     RESEND_API_KEY: env("RESEND_API_KEY") || undefined,
     ALERT_FROM: env("ALERT_FROM") || undefined,
+    DASHBOARD_ORIGINS: env("DASHBOARD_ORIGINS") || undefined,
+    // Where phones download apps stored in pieces: the dashboard's worker joins them (cloudflare/src/_worker.js).
+    DOWNLOAD_BASE_URL: env("DOWNLOAD_BASE_URL") || "https://confiance-kiosk.pages.dev/apk",
   },
 });
 

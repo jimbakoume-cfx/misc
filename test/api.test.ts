@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { PGlite } from "@electric-sql/pglite";
 import { createApp, type Seed } from "../supabase/functions/kiosk/app.ts";
 import { totp } from "../supabase/functions/kiosk/auth.ts";
@@ -11,10 +12,18 @@ async function makeApp(opts: { seed?: Seed; env?: Record<string, string>; fetch?
   const dir = new URL("../supabase/migrations/", import.meta.url);
   for (const m of readdirSync(dir).sort()) await pg.exec(readFileSync(new URL(m, dir), "utf8"));
   const blobs = new Map<string, ArrayBuffer>();
+  const born = new Map<string, number>(); // when each stored file was written (the cleanup looks at age)
   const pub = new URL("../public/", import.meta.url);
   const handler = createApp({
     db: { query: async (sql, params) => (await pg.query(sql, params as any[])).rows as any[] },
-    blobs: { get: async (k) => blobs.get(k) ?? null, set: async (k, v) => { blobs.set(k, v); } },
+    blobs: {
+      get: async (k) => blobs.get(k) ?? null,
+      set: async (k, v) => { blobs.set(k, v); born.set(k, Date.now()); },
+      signUpload: async (k) => `https://storage.example.com/upload/${k}?token=t`,
+      move: async (from, to) => { if (blobs.has(to)) throw new Error("exists"); blobs.set(to, blobs.get(from)!); born.set(to, born.get(from) ?? Date.now()); blobs.delete(from); born.delete(from); },
+      remove: async (keys) => { for (const k of keys) { blobs.delete(k); born.delete(k); } },
+      list: async (prefix) => [...blobs.keys()].filter((k) => (prefix ? k.startsWith(prefix + "/") : !k.includes("/"))).map((k) => ({ name: prefix ? k.slice(prefix.length + 1) : k, createdAt: born.get(k) ?? 0, size: blobs.get(k)!.byteLength })),
+    },
     assets: { get: (path) => { try { return { type: path.endsWith(".html") ? "text/html" : "text/javascript", body: readFileSync(new URL(`.${path}`, pub)) }; } catch { return null; } } },
     env: { SESSION_SECRET: "test-secret", ADMIN_EMAIL: "Boss@Example.com", ADMIN_PASSWORD: "correct-horse-battery", PUBLIC_URL: "https://kiosk.example.com", ...(opts.env ?? {}) },
     fetch: opts.fetch,
@@ -40,7 +49,7 @@ async function makeApp(opts: { seed?: Seed; env?: Record<string, string>; fetch?
     const key = (await pg.query("SELECT value FROM settings WHERE key='cron_key'")).rows[0] as any;
     return call("POST", "/api/cron", { headers: { "x-cron-key": key.value } });
   };
-  return { call, admin: login.body.token as string, login, callCron, pg };
+  return { call, admin: login.body.token as string, login, callCron, pg, blobs, born };
 }
 
 const { call, admin, login } = await makeApp();
@@ -439,6 +448,109 @@ test("presence: looking at the fleet pings every phone, and one that does not an
   await s.call("POST", "/api/device/heartbeat", { token: b.deviceToken, body: { status: { deviceOwner: true, pushConnected: false } } });
   await setPing(20_000, 0); await seen(a, 18_000); await seen(b, 300_000);
   assert.deepEqual(await states(), { A1: "online+live", B1: "online" });
+});
+
+test("big app files go straight to storage: upload address, registration by key, and cleanup of leftovers", async () => {
+  const s = await makeApp();
+  const up = await s.call("POST", "/api/uploads", { token: s.admin, body: {} });
+  assert.equal(up.status, 200);
+  assert.match(up.body.key, /^incoming\/[A-Za-z0-9_-]{16,}\.apk$/);
+  assert.ok(up.body.url.includes(up.body.key));
+  assert.equal((await s.call("POST", "/api/uploads", { body: {} })).status, 401);
+
+  // nothing arrived yet, a made-up key, or missing details: refused
+  const reg = (body: unknown) => s.call("POST", "/api/managed-apps", { token: s.admin, body });
+  assert.equal((await reg({ key: up.body.key, pkg: "com.confiance.driver", versionCode: 7 })).status, 400);
+  assert.equal((await reg({ key: "../etc/passwd", pkg: "com.confiance.driver", versionCode: 7 })).status, 400);
+
+  // the browser PUTs the file to storage, then registers it
+  const file = new Uint8Array(40_000).fill(7).buffer as ArrayBuffer;
+  s.blobs.set(up.body.key, file);
+  assert.equal((await reg({ key: up.body.key, pkg: "bad pkg", versionCode: 7 })).status, 400);
+  const ok = await reg({ key: up.body.key, pkg: "com.confiance.driver", label: "Confiance Driver", versionName: "2.3.0", versionCode: 7 });
+  assert.equal(ok.status, 200);
+  assert.match(ok.body.sha256, /^[0-9a-f]{64}$/);
+  assert.ok(s.blobs.has(`${ok.body.sha256}.apk`));  // stored under its checksum
+  assert.ok(!s.blobs.has(up.body.key));              // the temporary copy is gone
+  const list = (await s.call("GET", "/api/managed-apps", { token: s.admin })).body;
+  assert.deepEqual(list.map((m: any) => [m.pkg, m.label, m.versionName, m.versionCode, m.size]), [["com.confiance.driver", "Confiance Driver", "2.3.0", 7, 40_000]]);
+  assert.equal((await s.call("GET", `/apk/${ok.body.sha256}.apk`)).status, 200);
+
+  // the same content uploaded again only corrects the record
+  const up2 = (await s.call("POST", "/api/uploads", { token: s.admin, body: {} })).body;
+  s.blobs.set(up2.key, file);
+  assert.equal((await reg({ key: up2.key, pkg: "com.confiance.driver", label: "Driver", versionName: "2.3.1", versionCode: 8 })).status, 200);
+  assert.equal((await s.call("GET", "/api/managed-apps", { token: s.admin })).body.length, 1);
+  assert.ok(!s.blobs.has(up2.key));
+
+  // cleanup: an upload nobody registered (old) and an app file no row points at are removed; fresh ones are kept
+  const orphan = "ab".repeat(32) + ".apk";
+  s.blobs.set("incoming/abandoned-upload-0001.apk", file); s.born.set("incoming/abandoned-upload-0001.apk", Date.now() - 2 * 86_400_000);
+  s.blobs.set("incoming/just-started-upload1.apk", file); s.born.set("incoming/just-started-upload1.apk", Date.now());
+  s.blobs.set(orphan, file); s.born.set(orphan, Date.now() - 2 * 86_400_000);
+  s.born.set(`${ok.body.sha256}.apk`, Date.now() - 2 * 86_400_000);
+  const cron = await s.callCron();
+  assert.equal(cron.body.cleaned, 2);
+  assert.ok(!s.blobs.has("incoming/abandoned-upload-0001.apk") && !s.blobs.has(orphan));
+  assert.ok(s.blobs.has("incoming/just-started-upload1.apk") && s.blobs.has(`${ok.body.sha256}.apk`));
+
+  // deleting the app frees its file
+  const id = (await s.call("GET", "/api/managed-apps", { token: s.admin })).body[0].id;
+  assert.equal((await s.call("DELETE", `/api/managed-apps/${id}`, { token: s.admin })).status, 200);
+  assert.ok(!s.blobs.has(`${ok.body.sha256}.apk`));
+});
+
+test("an app too big for one stored file is kept in pieces and handed to phones as one file", async () => {
+  const s = await makeApp();
+  const reg = (body: unknown) => s.call("POST", "/api/managed-apps", { token: s.admin, body });
+  const whole = new Uint8Array(100_000).map((_, i) => i % 251);
+  const sha = createHash("sha256").update(whole).digest("hex");
+  const keys: string[] = [];
+  for (const [a, b] of [[0, 40_000], [40_000, 80_000], [80_000, 100_000]]) {
+    const up = (await s.call("POST", "/api/uploads", { token: s.admin, body: {} })).body;
+    s.blobs.set(up.key, whole.slice(a, b).buffer as ArrayBuffer); keys.push(up.key);
+  }
+  const app = { pkg: "com.confiance.driver", label: "Confiance Driver", versionName: "3.0", versionCode: 30 };
+  // wrong total size, a bad checksum, a piece that never arrived, the same piece twice: refused, nothing stored
+  assert.equal((await reg({ ...app, keys, sha256: sha, size: 99_999 })).status, 400);
+  assert.equal((await reg({ ...app, keys, sha256: "abc", size: 100_000 })).status, 400);
+  assert.equal((await reg({ ...app, keys: [keys[0], "incoming/never-arrived-000001.apk"], sha256: sha, size: 100_000 })).status, 400);
+  assert.equal((await reg({ ...app, keys: [keys[0], keys[0], keys[1]], sha256: sha, size: 100_000 })).status, 400);
+
+  const ok = await reg({ ...app, keys, sha256: sha, size: 100_000 });
+  assert.equal(ok.status, 200);
+  assert.deepEqual([0, 1, 2].map((i) => s.blobs.get(`${sha}.apk.p0${i}`)!.byteLength), [40_000, 40_000, 20_000]);
+  assert.deepEqual(JSON.parse(new TextDecoder().decode(s.blobs.get(`${sha}.apk.json`)!)), { size: 100_000, parts: [40_000, 40_000, 20_000] });
+  assert.ok(keys.every((k) => !s.blobs.has(k)));
+  const row = (await s.call("GET", "/api/managed-apps", { token: s.admin })).body[0];
+  assert.deepEqual([row.size, row.parts, row.sha256], [100_000, 3, sha]);
+
+  // the download address joins the pieces: same bytes, same checksum
+  const dl = await s.call("GET", `/apk/${sha}.apk`);
+  assert.equal(dl.status, 200);
+  assert.equal(dl.res.headers.get("content-length"), "100000");
+  assert.equal(createHash("sha256").update(new Uint8Array(dl.buf!)).digest("hex"), sha);
+
+  // phones are sent to the dashboard's address for it (the storage address cannot join pieces); small files keep the storage address
+  const url = async (x: string) => ((await s.pg.query("SELECT kiosk_apk_url($1) u", [x])).rows[0] as any).u as string;
+  await s.pg.query("UPDATE settings SET value='https://dash.example.com/apk' WHERE key='big_apk_base_url'");
+  assert.equal(await url(sha), `https://dash.example.com/apk/${sha}.apk`);
+  assert.equal(await url("ab".repeat(32)), `https://kiosk.example.com/apk/${"ab".repeat(32)}.apk`);
+
+  // sending the same file again only updates the record; cleanup keeps the pieces while the app exists, then frees them
+  const again: string[] = [];
+  for (const [a, b] of [[0, 50_000], [50_000, 100_000]]) {
+    const up = (await s.call("POST", "/api/uploads", { token: s.admin, body: {} })).body;
+    s.blobs.set(up.key, whole.slice(a, b).buffer as ArrayBuffer); again.push(up.key);
+  }
+  assert.equal((await reg({ ...app, versionName: "3.0.1", keys: again, sha256: sha, size: 100_000 })).status, 200);
+  assert.equal((await s.call("GET", "/api/managed-apps", { token: s.admin })).body.length, 1);
+  assert.ok(again.every((k) => !s.blobs.has(k)));
+  for (const k of s.blobs.keys()) s.born.set(k, Date.now() - 2 * 86_400_000);
+  assert.equal((await s.callCron()).body.cleaned, 0);
+  assert.equal((await s.call("DELETE", `/api/managed-apps/${row.id}`, { token: s.admin })).status, 200);
+  assert.ok(![...s.blobs.keys()].some((k) => k.startsWith(sha)));
+  assert.equal((await s.call("GET", `/apk/${sha}.apk`)).status, 404);
 });
 
 test("instant push is optional: no config means no channel, and a failing Supabase never breaks the dashboard", async () => {

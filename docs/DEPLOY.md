@@ -88,6 +88,23 @@ function (adding `x-region` so the function runs next to its database, and passi
 throttling stays per visitor), and redirects `/kiosk-agent.apk` to Storage. The page is therefore same-origin and
 needs no CORS entry. The Supabase address and region are two constants at the top of `src/_worker.js`.
 
+### App files and large apps
+
+The dashboard never sends an app file through the function (it must answer within 150 seconds). It asks
+`POST /api/uploads` for a one-time upload address, sends the file straight to the `apk` Storage bucket, then registers
+it with `POST /api/managed-apps`. Storage refuses files over 50 MB on the free plan, so a bigger APK (up to 600 MB) is
+sent in 40 MB pieces and stored as `<sha256>.apk.p00`, `.p01`, ... next to `<sha256>.apk.json` (total size and the
+size of each piece); `managed_apps.parts` records the number of pieces. Phones download such an app from
+`https://confiance-kiosk.pages.dev/apk/<sha256>.apk`: the worker joins the pieces into one stream and the phone
+checks the SHA-256 before installing. That address comes from the `big_apk_base_url` setting, written at start-up
+from the function's `DOWNLOAD_BASE_URL` variable (default: the Pages address) and used by the SQL function
+`kiosk_apk_url`. Files of 45 MB or less keep the plain Storage address. The hourly job deletes uploads that were never
+registered and files no app points at any more.
+
+Limits to keep in mind on the free plans: 1 GB of Storage in total and about 10 GB of downloads a month, so a 250 MB
+app can reach roughly 40 phones a month. For a larger fleet, enable Cloudflare R2 (no download fees) and point the
+worker at it, or move Supabase to the Pro plan.
+
 Deploy after any change under `public/` or `cloudflare/`:
 
 ```bash

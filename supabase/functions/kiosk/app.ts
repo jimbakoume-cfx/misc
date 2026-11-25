@@ -132,6 +132,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
     const want: Record<string, string> = {
       cron_key: s.cron_key || randomToken(24), public_url: base, apk_base_url: apkBase(base),
       supabase_url: pushOn ? supabaseUrl : "", supabase_anon_key: pushOn ? supabaseKey : "",
+      big_apk_base_url: (env.DOWNLOAD_BASE_URL ?? "").replace(/\/$/, "") || `${base}/apk`,
     };
     if (!secret) { secret = s.session_secret || randomToken(32); want.session_secret = secret; }
     const changed = Object.entries(want).filter(([k, v]) => s[k] !== v);
@@ -540,7 +541,23 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
     }
     const sha = name.replace(/\.apk$/, "");
     const rel = latest ? await currentRelease()
-      : (await get("SELECT version_name, sha256 FROM releases WHERE sha256=?", sha)) ?? (await get("SELECT version_name, sha256 FROM managed_apps WHERE sha256=?", sha));
+      : (await get("SELECT version_name, sha256 FROM releases WHERE sha256=?", sha)) ?? (await get("SELECT version_name, sha256, size, parts FROM managed_apps WHERE sha256=?", sha));
+    if (rel && num(rel.parts, 1) > 1) {
+      // Stored in pieces: send them one after the other as a single file.
+      let i = 0;
+      const body = new ReadableStream<Uint8Array>({
+        async pull(ctl) {
+          if (i >= rel.parts) return ctl.close();
+          const part = await blobs.get(partKey(rel.sha256, i++));
+          if (!part) return ctl.error(new Error("missing piece"));
+          ctl.enqueue(new Uint8Array(part));
+        },
+      });
+      return new Response(body, { headers: {
+        "content-type": "application/vnd.android.package-archive", "content-length": String(rel.size),
+        "content-disposition": `attachment; filename="app-${rel.version_name}.apk"`, "cache-control": "public, max-age=31536000, immutable",
+      } });
+    }
     const data = rel ? await blobs.get(`${rel.sha256}.apk`) : null;
     if (!rel || !data) throw new HttpError(404, "No such release");
     return new Response(data, { headers: {
@@ -716,7 +733,7 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
     if (type === "install") {
       const app = await get("SELECT * FROM managed_apps WHERE id=?", num(body.appId));
       if (!app) throw new HttpError(404, "Unknown app");
-      return { pkg: app.pkg, versionCode: app.version_code, url: `${await setting("apk_base_url")}/${app.sha256}.apk`, sha256: app.sha256 };
+      return { pkg: app.pkg, versionCode: app.version_code, url: (await get("SELECT kiosk_apk_url(?) u", app.sha256))!.u, sha256: app.sha256 };
     }
     if (type === "lost") return { message: String(body.message ?? "").slice(0, 200), phone: String(body.phone ?? "").slice(0, 40) };
     if (type === "ring") return { seconds: Math.min(Math.max(num(body.seconds, 30), 5), 300) };
@@ -813,35 +830,103 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
   // managed apps: other APKs installed silently on phones whose allowed list contains the package
   add("GET", "/api/managed-apps", "read", async () =>
     (await all("SELECT * FROM managed_apps ORDER BY pkg, version_code DESC, id DESC")).map((m) => ({
-      id: m.id, pkg: m.pkg, label: m.label, versionCode: m.version_code, versionName: m.version_name, sha256: m.sha256, size: m.size, createdAt: m.created_at,
+      id: m.id, pkg: m.pkg, label: m.label, versionCode: m.version_code, versionName: m.version_name, sha256: m.sha256, size: m.size, parts: num(m.parts, 1), createdAt: m.created_at,
     })));
+  const partKey = (sha: string, i: number) => `${sha}.apk.p${String(i).padStart(2, "0")}`;
+  const MAX_PART = 50 * 1048576, MAX_PARTS = 40;
+  /** Records an app file that is already in storage under `<sha256>.apk` and tells the phones concerned. */
+  async function saveManaged(actor: string, f: { digest: string; size: number; pkg: string; label: string; versionCode: number; versionName: string; parts?: number }) {
+    const parts = f.parts ?? 1;
+    const label = f.label.trim().slice(0, 60) || f.pkg;
+    const versionName = f.versionName.trim().slice(0, 30) || String(f.versionCode);
+    const dup = await get("SELECT id FROM managed_apps WHERE sha256=?", f.digest);
+    if (dup) await run("UPDATE managed_apps SET pkg=?, label=?, version_code=?, version_name=?, size=?, parts=? WHERE id=?", f.pkg, label, f.versionCode, versionName, f.size, parts, dup.id);
+    else await run("INSERT INTO managed_apps(pkg,label,version_code,version_name,sha256,size,parts,created_at) VALUES(?,?,?,?,?,?,?,?)", f.pkg, label, f.versionCode, versionName, f.digest, f.size, parts, now());
+    await bumpEpoch();
+    await audit(actor, "upload-app", `${label} ${versionName} (${f.versionCode})`);
+    // Every phone gets the ping: the app may be allowed fleet-wide, by a group or for one phone.
+    await wakeAll();
+    const affected = await all("SELECT d.id FROM devices d LEFT JOIN device_groups g ON g.id=d.group_id WHERE COALESCE(d.allowed_override, g.allowed_apps, '[]') LIKE ?", `%"${f.pkg}"%`);
+    return { ok: true, sha256: f.digest, devices: affected.length };
+  }
+  const managedFields = (pkg: unknown, versionCode: unknown) => {
+    const p = String(pkg ?? "").trim(), v = num(versionCode);
+    if (!/^[A-Za-z0-9_.]+$/.test(p) || !v) throw new HttpError(400, "pkg and versionCode required");
+    return { pkg: p, versionCode: v };
+  };
+  // Small files can still be sent in one request (the file is the body).
   add("PUT", "/api/managed-apps", "write", async (c) => {
     const body = await c.req.arrayBuffer();
     if (body.byteLength < 1000) throw new HttpError(400, "Send the APK as the request body");
-    const pkg = (c.query.get("pkg") ?? "").trim();
-    const versionCode = num(c.query.get("versionCode"));
-    if (!/^[A-Za-z0-9_.]+$/.test(pkg) || !versionCode) throw new HttpError(400, "pkg and versionCode required");
+    const f = managedFields(c.query.get("pkg"), c.query.get("versionCode"));
     const digest = sha256Buf(body);
     await blobs.set(`${digest}.apk`, body, "application/vnd.android.package-archive");
-    const label = (c.query.get("label") ?? "").trim().slice(0, 60) || pkg;
-    const versionName = (c.query.get("versionName") ?? "").trim().slice(0, 30) || String(versionCode);
-    const dup = await get("SELECT id FROM managed_apps WHERE sha256=?", digest);
-    if (dup) await run("UPDATE managed_apps SET pkg=?, label=?, version_code=?, version_name=? WHERE id=?", pkg, label, versionCode, versionName, dup.id);
-    else await run("INSERT INTO managed_apps(pkg,label,version_code,version_name,sha256,size,created_at) VALUES(?,?,?,?,?,?,?)", pkg, label, versionCode, versionName, digest, body.byteLength, now());
-    await bumpEpoch();
-    await audit(who(c), "upload-app", `${label} ${versionName} (${versionCode})`);
-    const affected = (await all("SELECT d.id FROM devices d LEFT JOIN device_groups g ON g.id=d.group_id WHERE COALESCE(d.allowed_override, g.allowed_apps, '[]') LIKE ?", `%"${pkg}"%`)).map((r) => r.id);
-    await wake(affected);
-    return { ok: true, sha256: digest, devices: affected.length };
+    return saveManaged(who(c), { ...f, digest, size: body.byteLength, label: c.query.get("label") ?? "", versionName: c.query.get("versionName") ?? "" });
   });
+  // Bigger files never pass through this function, which has to answer within 150 seconds: the dashboard asks for a
+  // one-time upload address, sends the file straight to storage, then registers it with POST /api/managed-apps.
+  add("POST", "/api/uploads", "write", async () => {
+    if (!blobs.signUpload) throw new HttpError(409, "Direct uploads are not available on this deployment");
+    const key = `incoming/${randomToken(18)}.apk`;
+    return { key, url: await blobs.signUpload(key) };
+  });
+  add("POST", "/api/managed-apps", "write", async (c) => {
+    if (Array.isArray(c.body.keys) && c.body.keys.length > 1) return saveInPieces(c);
+    const key = String(c.body.key ?? (Array.isArray(c.body.keys) ? c.body.keys[0] : ""));
+    if (!/^incoming\/[A-Za-z0-9_-]{16,}\.apk$/.test(key)) throw new HttpError(400, "Unknown upload");
+    const f = managedFields(c.body.pkg, c.body.versionCode);
+    const data = await blobs.get(key);
+    if (!data || data.byteLength < 1000) throw new HttpError(400, "The file did not arrive. Send it again.");
+    const digest = sha256Buf(data);
+    // One stored copy per content, named after its checksum (phones verify it before installing).
+    try { if (!blobs.move) throw new Error("no move"); await blobs.move(key, `${digest}.apk`); }
+    catch { await blobs.set(`${digest}.apk`, data, "application/vnd.android.package-archive"); await blobs.remove?.([key]); }
+    return saveManaged(who(c), { ...f, digest, size: data.byteLength, label: String(c.body.label ?? ""), versionName: String(c.body.versionName ?? "") });
+  });
+  // A file bigger than the storage accepts in one piece arrives as several uploads, in order. This function never
+  // loads it (it would not fit in memory): the dashboard computes the checksum, and every phone verifies it again
+  // before installing, so a wrong value only makes the install fail with "checksum mismatch".
+  async function saveInPieces(c: Ctx) {
+    const keys: string[] = c.body.keys.map(String);
+    const digest = String(c.body.sha256 ?? "").toLowerCase(), size = num(c.body.size);
+    if (keys.length > MAX_PARTS || new Set(keys).size !== keys.length || keys.some((k) => !/^incoming\/[A-Za-z0-9_-]{16,}\.apk$/.test(k))) throw new HttpError(400, "Unknown upload");
+    if (!/^[0-9a-f]{64}$/.test(digest) || !(size > 0)) throw new HttpError(400, "sha256 and size required");
+    const f = managedFields(c.body.pkg, c.body.versionCode);
+    if (!blobs.list || !blobs.move || !blobs.remove) throw new HttpError(409, "Large files are not available on this deployment");
+    const arrived = new Map((await blobs.list("incoming")).map((o) => [`incoming/${o.name}`, num(o.size)]));
+    const sizes = keys.map((k) => arrived.get(k) ?? 0);
+    if (sizes.some((n) => n < 1 || n > MAX_PART) || sizes.reduce((a, n) => a + n, 0) !== size) throw new HttpError(400, "The file did not arrive completely. Send it again.");
+    const stored = new Set((await blobs.list("")).map((o) => o.name));
+    if (stored.has(`${digest}.apk.json`)) await blobs.remove(keys); // the same content is already there
+    else {
+      for (let i = 0; i < keys.length; i++) {
+        if (stored.has(partKey(digest, i))) await blobs.remove([partKey(digest, i)]); // left by an attempt that stopped half-way
+        await blobs.move(keys[i], partKey(digest, i));
+      }
+      // Written last: the download address only answers once every piece is in place.
+      await blobs.set(`${digest}.apk.json`, new TextEncoder().encode(JSON.stringify({ size, parts: sizes })).buffer as ArrayBuffer, "application/json");
+    }
+    return saveManaged(who(c), { ...f, digest, size, parts: keys.length, label: String(c.body.label ?? ""), versionName: String(c.body.versionName ?? "") });
+  }
   add("DELETE", "/api/managed-apps/:id", "write", async (c) => {
     const m = await get("SELECT * FROM managed_apps WHERE id=?", Number(c.params.id));
     if (!m) throw new HttpError(404, "Not found");
     await run("DELETE FROM managed_apps WHERE id=?", m.id);
     await bumpEpoch();
     await audit(who(c), "delete-app", `${m.label} ${m.version_name}`);
+    await cleanStorage().catch((e) => console.warn("storage cleanup failed:", (e as Error).message));
     return { ok: true };
   });
+
+  /** Frees storage: uploads that were never registered (older than a day) and app files no row points at any more. */
+  async function cleanStorage() {
+    if (!blobs.list || !blobs.remove) return 0;
+    const used = new Set((await all("SELECT sha256 FROM releases UNION SELECT sha256 FROM managed_apps")).map((r) => r.sha256 as string));
+    const stale = (await blobs.list("incoming")).filter((o) => now() - o.createdAt > 86_400_000).map((o) => `incoming/${o.name}`);
+    const orphans = (await blobs.list("")).filter((o) => /^[0-9a-f]{64}\.apk(\.p\d\d|\.json)?$/.test(o.name) && !used.has(o.name.slice(0, 64)) && now() - o.createdAt > 3_600_000).map((o) => o.name);
+    await blobs.remove([...stale, ...orphans]);
+    return stale.length + orphans.length;
+  }
 
   // enrollment tokens + QR
   add("GET", "/api/enroll-tokens", "read", async () =>
@@ -940,8 +1025,9 @@ export function createApp(deps: Deps): (req: Request) => Promise<Response> {
     const bad = num((await get("SELECT COUNT(*)::int n FROM audit WHERE action='login-failed' AND ts>?", now() - 3_600_000))?.n);
     if (bad > 20) await run("SELECT kiosk_alert(NULL, 'security', ?)", `${bad} failed sign-ins in the last hour`);
     else await run("UPDATE alerts SET active=0, cleared_at=? WHERE device_id IS NULL AND kind='security' AND active=1", now());
+    const cleaned = await cleanStorage().catch((e) => { console.warn("storage cleanup failed:", (e as Error).message); return 0; });
     const mail = await emailAlerts();
-    return { ok: true, ...mail };
+    return { ok: true, cleaned, ...mail };
   });
 
   // settings

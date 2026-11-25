@@ -106,7 +106,7 @@ async function api(method, url, body, raw) {
     if (data.token && /^\/api\/(login|me\/password|me\/2fa\/enable)$/.test(url)) tokenStore.set(data.token, url === "/api/login" ? !!$("#remember")?.checked : undefined);
     if (!res.ok) { const e = new Error(data.error || `HTTP ${res.status}`); e.data = data; throw e; }
     if (data.need2faSetup) { location.hash = "#/account"; }
-    if (method === "GET") cache.set(url, data);
+    if (method === "GET") cache.set(url, data); else setupAt = 0;
     return data;
   } finally { barEnd(); }
 }
@@ -151,13 +151,15 @@ const skTable = (rows = 7) => `<div class="card tablecard"><div class="pad"><div
 const skForm = () => `<div class="grid g2">${[0, 1].map(() => `<div class="card pad"><div class="sk t" style="width:40%"></div><div class="sk t"></div><div class="sk t"></div><div class="sk h" style="width:100%"></div></div>`).join("")}</div>`;
 
 // ---------- navigation ----------
+// Ordered by how often each page is used: daily work first, rules next, the technical corner last. "My account"
+// lives on the name at the bottom of the menu.
 const NAV = [
-  ["nav.fleet", [["overview", "nav.overview", "grid"], ["devices", "nav.devices", "phone"], ["groups", "nav.groups", "layers"]]],
-  ["nav.deploy", [["provision", "nav.provision", "qr"], ["releases", "nav.releases", "pkg"]]],
-  ["nav.admin", [["settings", "nav.settings", "sliders"], ["account", "nav.account", "user"], ["audit", "nav.audit", "activity"]]],
+  [null, [["overview", "nav.overview", "grid"], ["devices", "nav.devices", "phone"], ["provision", "nav.provision", "plus"]]],
+  ["nav.rules", [["apps", "nav.apps", "layers"]]],
+  ["nav.system", [["releases", "nav.releases", "pkg"], ["settings", "nav.settings", "sliders"], ["audit", "nav.audit", "activity"]]],
 ];
 function buildNav() {
-  $("#nav").innerHTML = NAV.map(([g, items]) => `<div class="navgroup">${t(g)}</div>` + items.map(([k, l, i]) => `<button data-tab="${k}">${ic(i)}<span>${t(l)}</span><span class="badge warn hidden" id="nb-${k}"></span></button>`).join("")).join("");
+  $("#nav").innerHTML = NAV.map(([g, items]) => (g ? `<div class="navgroup">${t(g)}</div>` : "") + items.map(([k, l, i]) => `<button data-tab="${k}">${ic(i)}<span>${t(l)}</span><span class="badge warn hidden" id="nb-${k}"></span></button>`).join("")).join("");
 }
 function showLogin() { clearInterval(refreshTimer); $("#app").classList.add("hidden"); $("#login").classList.remove("hidden"); cache.clear(); pageData = {}; }
 const prefetchedAt = {};
@@ -166,7 +168,8 @@ function prefetch(tn) {
   prefetchedAt[tn] = Date.now();
   return pages[tn].load().then((d) => { pageData[tn] = d; }).catch(() => {});
 }
-const routeFromHash = () => { const r = location.hash.replace(/^#\/?/, ""); return pages[r] ? r : "overview"; };
+const ALIAS = { groups: "apps" }; // old address of the groups page
+const routeFromHash = () => { let r = location.hash.replace(/^#\/?/, ""); r = ALIAS[r] ?? r; return pages[r] ? r : "overview"; };
 window.addEventListener("hashchange", () => go(routeFromHash()));
 function setHead(p, data) {
   $("#pageTitle").textContent = t(p.title);
@@ -249,57 +252,95 @@ function bindAlertRows(root = document) {
 const pages = {};
 
 // ---------- Overview ----------
+// Setup checklist: what a new fleet still has to do. Fetched with the overview and kept for five minutes.
+let setupInfo = null, setupAt = 0;
+const setupHidden = () => { try { return localStorage.getItem("kiosk.setup.hide") === "1"; } catch { return false; } };
+async function loadSetup() {
+  if (setupHidden() || !canWrite()) return null;
+  if (setupInfo && Date.now() - setupAt < 300_000) return setupInfo;
+  try { const [st, ds] = await Promise.all([get("/api/settings"), get("/api/devices")]); setupInfo = { st, ds }; setupAt = Date.now(); } catch { /* the checklist is optional */ }
+  return setupInfo;
+}
+function setupSteps(o, info) {
+  if (!info) return [];
+  const { st, ds } = info, named = ds.filter((d) => d.driverName).length;
+  return [
+    { done: o.total > 0, t: t("su.phone"), d: t("su.phone.d"), go: "provision" },
+    { done: ds.length > 0 && named === ds.length, t: t("su.drivers"), d: t("su.drivers.d", { n: named, total: ds.length }), go: "devices", filter: "all" },
+    { done: (st.allowedApps ?? []).length > 0, t: t("su.apps"), d: t("su.apps.d"), go: "apps" },
+    { done: !!st.dispatchPhone, t: t("su.dispatch"), d: t("su.dispatch.d"), go: "settings", stab: "phones" },
+    { done: !!me.twoFactor, t: t("su.2fa"), d: t("su.2fa.d"), go: "account" },
+    { done: !!st.alertEmails, t: t("su.alerts"), d: t("su.alerts.d"), go: "settings", stab: "alerts" },
+  ];
+}
+/** Lines of the activity log that are noise on a summary: sign-ins, setup beacons, downloads. */
+const isNoise = (a) => /^setup:|apk-download|^login|^logout|recovery-code/.test(a.action);
+
+// The page answers three questions in this order: is anything wrong, what does it cost, what happened.
 pages.overview = {
   title: "ov.title", sub: "ov.sub", live: true,
-  skeleton: () => skCards(4) + `<div class="grid g2 section">${skForm()}</div>`,
-  load: () => Promise.all([get("/api/overview"), get("/api/audit?limit=12")]),
-  render([o, audit]) {
+  skeleton: () => `<div class="card pad"><div class="sk t" style="width:45%"></div><div class="sk t"></div></div><div class="section">${skCards(3)}</div>`,
+  load: () => Promise.all([get("/api/overview"), get("/api/audit?limit=40"), loadSetup()]),
+  render([o, audit, info]) {
     const total = o.total || 0, pct = (n) => (total ? Math.round((n / total) * 100) : 0);
     const items = [];
     if (o.pendingApproval) items.push({ tone: "warn", icon: "shield", t: t("ov.pending", { n: o.pendingApproval }), d: t("ov.pending.d"), go: "devices", filter: "pending", cta: t("common.review") });
     if (o.lost) items.push({ tone: "bad", icon: "pin", t: t("ov.lost", { n: o.lost }), d: t("ov.lost.d"), go: "devices", filter: "lost", cta: t("common.view") });
     if (o.offline) items.push({ tone: "bad", icon: "phone", t: t("ov.offline", { n: o.offline }), d: t("ov.offline.d"), go: "devices", filter: "offline", cta: t("common.view") });
+    if (o.stale) items.push({ tone: "warn", icon: "nonet", t: t("ov.stale", { n: o.stale }), d: t("ov.stale.d"), go: "devices", filter: "offline", cta: t("common.view") });
     if (o.lowBattery) items.push({ tone: "warn", icon: "zap", t: t("ov.lowbat", { n: o.lowBattery }), d: t("ov.lowbat.d"), go: "devices", filter: "all", cta: t("common.view") });
     if (o.outdated) items.push({ tone: "info", icon: "pkg", t: t("ov.outdated", { n: o.outdated }), d: t("ov.outdated.d", { v: o.currentVersion ?? "—" }), go: "releases", cta: t("common.update") });
-    const alerts = (o.alerts ?? []).filter((a) => !["offline", "unmanaged"].includes(a.kind) || true);
-    const attention = items.filter((a) => a.tone !== "info").length + alerts.length;
-    const budget = o.data?.budgetMb || 0;
+    const alerts = o.alerts ?? [];
+    const issues = items.filter((a) => a.tone !== "info").length + alerts.length;
+    const bad = items.some((a) => a.tone === "bad") || alerts.some((a) => ALERT_TONE[a.kind] === "bad");
+    const tone = bad ? "bad" : issues ? "warn" : "ok";
+    const headline = issues ? t("ov.hero.issues", { n: issues }) : t("ov.hero.ok", { n: total });
+    const budget = o.data?.budgetMb || 0, fleetBudget = budget * total * 1048576, used = o.data?.mobileBytes ?? 0, usedPct = fleetBudget ? Math.round((used / fleetBudget) * 100) : 0;
+    const steps = setupSteps(o, info), done = steps.filter((x) => x.done).length;
+    const setup = steps.length && done < steps.length ? `<div class="card section setup">
+        <div class="hd"><div><h3>${t("su.h")}</h3><p>${t("su.p", { done, n: steps.length })}</p></div><button class="btn quiet sm" id="setupHide">${t("su.hide")}</button></div>
+        <div class="setupbar"><i style="width:${Math.round((done / steps.length) * 100)}%"></i></div>
+        ${steps.map((x) => `<div class="todo ${x.done ? "done" : ""}"><div class="ic ${x.done ? "ok" : "neutral"}">${ic(x.done ? "check" : "chevron")}</div><div class="tx"><b>${x.t}</b><span>${x.d}</span></div>${x.done ? "" : `<button class="btn ghost sm" data-go="${x.go}" ${x.filter ? `data-filter="${x.filter}"` : ""} ${x.stab ? `data-stab="${x.stab}"` : ""}>${t("su.go")}</button>`}</div>`).join("")}
+      </div>` : "";
+    const feed = audit.filter((a) => !isNoise(a)).slice(0, 6);
+    if (o.total === 0) return `<div class="card empty"><div class="ico">${ic("phone")}</div><h3>${t("ov.empty.h")}</h3><p>${t("ov.empty.p")}</p>${canWrite() ? `<button class="btn" data-go="provision">${ic("plus")} ${t("ov.empty.btn")}</button>` : ""}</div>${setup}`;
     return `
-    ${o.total === 0 ? `<div class="card empty"><div class="ico">${ic("phone")}</div><h3>${t("ov.empty.h")}</h3><p>${t("ov.empty.p")}</p>${canWrite() ? `<button class="btn" data-go="provision">${ic("plus")} ${t("ov.empty.btn")}</button>` : ""}</div>` : `
-    <div class="grid g4">
-      ${stat({ label: t("ov.phones"), value: o.total, sub: t("ov.phones.sub", { live: o.live, total: o.total }), icon: "phone", go: "devices", filter: "all" })}
-      ${stat({ label: t("ov.online"), value: o.online, sub: t("ov.online.sub", { pct: pct(o.online) }), icon: "activity", tone: "ok", go: "devices", filter: "online" })}
-      ${stat({ label: t("ov.attention"), value: attention, sub: attention ? t("ov.attention.sub") : t("ov.attention.ok"), icon: "alert", tone: items.some((a) => a.tone === "bad") || alerts.some((a) => ALERT_TONE[a.kind] === "bad") ? "bad" : attention ? "warn" : "ok", go: "devices", filter: attention ? "alerts" : "all" })}
-      ${stat({ label: t("ov.data"), value: fmtBytes(o.data?.mobileBytes ?? 0), sub: budget ? t("ov.data.sub", { wifi: fmtBytes(o.data?.wifiBytes ?? 0), budget: fmtGbFromMb(budget) }) : t("ov.data.nobudget", { wifi: fmtBytes(o.data?.wifiBytes ?? 0) }), icon: "signal", go: "devices", filter: "all" })}
+    <div class="card hero ${tone}">
+      <div class="heromain">
+        <div class="heroic">${ic(tone === "ok" ? "check" : "alert")}</div>
+        <div class="grow"><h2>${headline}</h2><p>${o.push ? t("ov.push.on") : t("ov.push.off", { min: Math.round(o.intervalSec / 60) })}</p></div>
+        <div class="row heroact"><button class="btn ghost" data-go="devices" data-filter="all">${ic("phone")} ${t("ov.hero.view")}</button>${canWrite() ? `<button class="btn" data-go="provision">${ic("plus")} ${t("ov.hero.add")}</button>` : ""}</div>
+      </div>
+      <div class="herobar">
+        <div class="split" aria-hidden="true"><i class="on" style="width:${pct(o.online)}%"></i><i class="st" style="width:${pct(o.stale)}%"></i><i class="off" style="width:${pct(o.offline)}%"></i></div>
+        <div class="legend"><span><i class="dot on"></i><b>${o.online}</b> ${t("ov.online.n")}</span><span><i class="dot st"></i><b>${o.stale}</b> ${t("ov.stale.n")}</span><span><i class="dot off"></i><b>${o.offline}</b> ${t("ov.offline.n")}</span>${alerts.length && canWrite() ? `<span class="grow"></span><button class="btn quiet sm" id="dismissAll">${t("common.dismissAll")}</button>` : ""}</div>
+      </div>
+      ${items.map((a) => `<div class="todo"><div class="ic ${a.tone}">${ic(a.icon)}</div><div class="tx"><b>${a.t}</b><span>${a.d}</span></div><button class="btn ghost sm" data-go="${a.go}" ${a.filter ? `data-filter="${a.filter}"` : ""}>${a.cta}</button></div>`).join("")}
+      ${alerts.map((a) => alertRow(a)).join("")}
     </div>
-    <div class="card pad section strip">
-      <div class="row between"><h3>${t("ov.status")}</h3><span class="hint" style="margin:0">${o.push ? t("ov.push.on") : t("ov.push.off", { min: Math.round(o.intervalSec / 60) })} ${t("ov.refresh")}</span></div>
-      <div class="split" aria-hidden="true"><i class="on" style="width:${pct(o.online)}%"></i><i class="st" style="width:${pct(o.stale)}%"></i><i class="off" style="width:${pct(o.offline)}%"></i></div>
-      <div class="legend"><span><b>${o.online}</b> ${t("ov.online.n")}</span><span><b>${o.stale}</b> ${t("ov.stale.n")}</span><span><b>${o.offline}</b> ${t("ov.offline.n")}</span></div>
+    ${setup}
+    <div class="tiles section">
+      <div class="card stat link wide ${budget && usedPct > 100 ? "bad" : ""}" data-go="devices" data-filter="all" tabindex="0" role="button"><div class="k"><span class="ico">${ic("signal")}</span>${t("ov.data")}</div><div class="v">${fmtBytes(used)}</div>
+        ${fleetBudget ? `<div class="budget"><i style="width:${Math.min(100, Math.max(1, usedPct))}%" class="${usedPct > 100 ? "over" : usedPct > 80 ? "warn" : ""}"></i></div><div class="d">${t("ov.data.fleet", { pct: usedPct, budget: fmtBytes(fleetBudget), per: fmtGbFromMb(budget) })}</div>` : `<div class="d">${t("ov.data.nobudget", { wifi: fmtBytes(o.data?.wifiBytes ?? 0) })}</div>`}</div>
+      ${stat({ label: t("ov.live"), value: `${o.live}<small> / ${total}</small>`, sub: t("ov.live.sub"), icon: "zap", tone: o.live === total ? "ok" : "warn", go: "devices", filter: "all" })}
+      ${stat({ label: t("ov.version"), value: esc(o.currentVersion ?? "—"), sub: o.outdated ? t("ov.version.old", { n: o.outdated }) : t("ov.version.ok"), icon: "pkg", tone: o.outdated ? "warn" : "ok", go: "releases" })}
     </div>
-    <div class="grid g2 section" style="grid-template-columns:repeat(auto-fit,minmax(380px,1fr))">
+    <div class="grid g2 section">
       <div class="card">
-        <div class="hd"><div><h3>${t("ov.needs")}</h3><p>${t("ov.needs.sub")}</p></div>${alerts.length && canWrite() ? `<button class="btn quiet sm" id="dismissAll">${t("common.dismissAll")}</button>` : ""}</div>
-        ${items.map((a) => `<div class="todo"><div class="ic ${a.tone}">${ic(a.icon)}</div><div class="tx"><b>${a.t}</b><span>${a.d}</span></div><button class="btn ghost sm" data-go="${a.go}" ${a.filter ? `data-filter="${a.filter}"` : ""}>${a.cta}</button></div>`).join("")}
-        ${alerts.map((a) => alertRow(a)).join("")}
-        ${items.length + alerts.length ? "" : `<div class="todo"><div class="ic ok">${ic("check")}</div><div class="tx"><b>${t("ov.needs.none")}</b><span>${t("ov.needs.none.sub")}</span></div></div>`}
+        <div class="hd"><div><h3>${t("ov.top")}</h3><p>${t("ov.top.sub")}</p></div></div>
+        ${o.data?.top?.length ? `<div class="toplist">${o.data.top.map((x) => { const max = o.data.top[0].mobileBytes || 1; return `<div class="topitem" data-open="${x.id}" tabindex="0" role="button"><span class="nm">${esc(x.driverName || x.name)}</span><i><b style="width:${Math.max(4, (x.mobileBytes / max) * 100)}%"></b></i><span class="val ${budget && x.mobileBytes > budget * 1048576 ? "over" : ""}">${fmtBytes(x.mobileBytes)}</span></div>`; }).join("")}</div>` : `<div class="pad muted sm">${t("ov.top.none")}</div>`}
       </div>
-      <div class="grid" style="align-content:start">
-        <div class="card">
-          <div class="hd"><div><h3>${t("ov.top")}</h3><p>${t("ov.top.sub")}</p></div></div>
-          ${o.data?.top?.length ? `<div class="toplist">${o.data.top.map((x) => { const max = o.data.top[0].mobileBytes || 1; return `<div class="topitem" data-open="${x.id}" tabindex="0" role="button"><span class="nm">${esc(x.driverName || x.name)}</span><i><b style="width:${Math.max(4, (x.mobileBytes / max) * 100)}%"></b></i><span class="val ${budget && x.mobileBytes > budget * 1048576 ? "over" : ""}">${fmtBytes(x.mobileBytes)}</span></div>`; }).join("")}</div>` : `<div class="pad muted sm">${t("ov.top.none")}</div>`}
-        </div>
-        <div class="card">
-          <div class="hd"><div><h3>${t("ov.recent")}</h3></div><button class="btn quiet sm" data-go="audit">${t("ov.viewall")} ${ic("chevron")}</button></div>
-          <div class="feed">${audit.filter((a) => !/^setup:|apk-download/.test(a.action)).slice(0, 6).map((a) => `<div class="it"><time>${hhmm(a.ts)}</time><span><b>${esc(a.actor.split("@")[0])}</b> ${esc(actionLabel(a.action).toLowerCase())} ${esc(a.detail)}</span></div>`).join("") || `<div class="it"><span class="muted">${t("ov.nothing")}</span></div>`}</div>
-        </div>
+      <div class="card">
+        <div class="hd"><div><h3>${t("ov.recent")}</h3><p>${t("ov.recent.sub")}</p></div><button class="btn quiet sm" data-go="audit">${t("ov.viewall")} ${ic("chevron")}</button></div>
+        <div class="feed">${feed.map((a) => `<div class="it"><time title="${esc(when(a.ts))}">${ago(a.ts)}</time><span><b>${esc(a.actor.split("@")[0])}</b> ${esc(actionLabel(a.action).toLowerCase())} ${esc(a.detail)}</span></div>`).join("") || `<div class="it"><span class="muted">${t("ov.nothing")}</span></div>`}</div>
       </div>
-    </div>`}`;
+    </div>`;
   },
   bind() {
     bindAlertRows();
     $$(".topitem").forEach((el) => el.onclick = () => openDevice(+el.dataset.open));
     $("#dismissAll")?.addEventListener("click", (e) => busy(e.currentTarget, async () => { if (await ask({ title: t("common.dismissAll") + "?" })) { await api("POST", "/api/alerts/dismiss-all"); refresh(); } }));
+    $("#setupHide")?.addEventListener("click", () => { try { localStorage.setItem("kiosk.setup.hide", "1"); } catch { /* private mode */ } setupInfo = null; paint("overview", [pageData.overview[0], pageData.overview[1], null]); });
   },
 };
 
@@ -416,6 +457,7 @@ const minutes = (m) => m >= 60 ? t("d.data.h.short", { h: Math.floor(m / 60), m:
 // --- device drawer ---
 // ---------- phone map (Leaflet + OpenStreetMap tiles, both free; Leaflet is bundled under vendor/) ----------
 let devMap = null, fleetMap = null;
+let devTab = "main", devTabFor = 0; // pane shown in the phone drawer, kept while the same phone is re-opened
 const OSM = () => L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, referrerPolicy: "strict-origin-when-cross-origin", attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>' });
 /** Every phone with a known position on one map: green live/online, amber stale, grey offline, red lost. */
 function drawFleetMap(all) {
@@ -499,70 +541,111 @@ async function openDevice(id) {
   const budget = usage.budgetMb || 0, overPct = budget ? Math.round((usage.month.mobileBytes / (budget * 1048576)) * 100) : 0;
   const today = usage.days.find((x) => x.day === usage.today);
   const appUsage = today ? Object.entries(today.appUsage ?? {}).sort((a, b) => b[1] - a[1]) : [];
+  if (devTabFor !== id) { devTab = "main"; devTabFor = id; }
+  const outdated = pageData.overview?.[0]?.currentVersionCode && d.agentVersionCode && d.agentVersionCode < pageData.overview[0].currentVersionCode;
+  const fact = (k, v, sub = "") => `<div class="fact"><span class="k">${k}</span><div class="v">${v}</div>${sub ? `<span class="s">${sub}</span>` : ""}</div>`;
+  const dangerBtn = (attrs, icon, label) => `<button class="btn ghost danger-o" ${attrs}>${ic(icon)} ${label}</button>`;
+  // Three panes, most used first: what the phone is doing and what you can do to it; who drives it and which apps it
+  // may open; the technical record. Every pane stays in the page (hidden), so unsaved edits survive a tab switch.
   const dlg = openDlg(`
-    <div class="hd"><div class="dev"><div class="ph">${ic(d.driverName ? "user" : "phone")}</div><div class="grow"><h2>${esc(d.driverName || d.name)}</h2><span class="muted sm">${[d.driverName ? d.name : null, d.vehicle].filter(Boolean).map(esc).join(" · ") || esc(modelName(d.model))}</span></div></div><span class="grow"></span>${statePill(d)}<button class="btn quiet icon" data-close aria-label="${esc(t("common.close"))}">${ic("x")}</button></div>
+    <div class="hd"><div class="dev"><div class="ph">${ic(d.driverName ? "user" : "phone")}</div><div class="grow"><h2>${esc(d.driverName || d.name)}</h2><span class="muted sm">${[d.driverName ? d.name : null, d.vehicle, modelName(d.model)].filter(Boolean).map(esc).join(" · ")}</span></div></div><span class="grow"></span>${statePill(d)}<button class="btn quiet icon" data-close aria-label="${esc(t("common.close"))}">${ic("x")}</button></div>
+    <div class="dtabs" role="tablist">${[["main", "d.tab.main"], ["config", "d.tab.config"], ["tech", "d.tab.tech"]].map(([k, l]) => `<button role="tab" data-pane-tab="${k}">${t(l)}</button>`).join("")}</div>
     <div class="bd">
       ${d.lostMode ? `<div class="banner bad" style="margin-bottom:16px">${ic("pin")}<div class="t"><b>${t("d.lost.h")}</b><span>${esc(t("d.lost.p", { msg: d.lostMessage || d.effective.lostMode?.message || "", phone: d.effective.lostMode?.phone || "—" }))}</span></div>${canWrite() ? `<button class="btn sm" data-cmd="found">${t("d.lost.found")}</button>` : ""}</div>` : ""}
       ${d.problem ? `<div class="banner info" style="margin-bottom:16px">${ic("bell")}<div class="t"><b>${t("d.problem.h")}</b><span>“${esc(d.problem)}” · ${ago(d.problemAt)}</span></div>${canWrite() ? `<button class="btn ghost sm" id="clearProblem">${t("d.problem.resolve")}</button>` : ""}</div>` : ""}
       ${!d.deviceOwner ? `<div class="banner bad" style="margin-bottom:16px">${ic("alert")}<div class="t"><b>${t("d.unmanaged.h")}</b><span>${t("d.unmanaged.p")}</span></div></div>` : ""}
       ${!d.approved ? `<div class="banner warn" style="margin-bottom:16px">${ic("shield")}<div class="t"><b>${t("d.pending.h")}</b><span>${t("d.pending.p")}</span></div></div>` : ""}
-      <dl class="kv">
-        ${kv(t("d.k.battery"), battery(d))}${kv(t("d.k.network"), `${netPill(d)}${d.signal != null && d.signal >= 0 ? ` <span class="muted sm">· ${Math.min(4, d.signal)}/4</span>` : ""}${d.simOperator ? ` <span class="muted sm">· ${esc(d.simOperator)}</span>` : ""}`)}
-        ${kv(t("d.k.seen"), ago(d.lastSeen))}${kv(t("d.k.app"), `${esc(d.agentVersion ?? "—")}${pageData.overview?.[0]?.currentVersionCode && d.agentVersionCode && d.agentVersionCode < pageData.overview[0].currentVersionCode ? ` <span class="pill warn plain">${t("d.outdated")}</span>` : ""}`)}
-        ${kv(t("d.k.mgmt"), d.deviceOwner ? `<span class="pill ok">${t("d.managed")}</span>` : `<span class="pill bad">${t("d.notmanaged")}</span>`)}
-        ${kv(t("d.k.live"), d.live ? `<span class="pill info plain">${ic("zap")} ${t("state.live")}</span>` : `<span class="muted">${t("d.k.live.no")}</span>`)}
-        ${kv(t("d.k.android"), `${esc(androidShort(d.osVersion)) || "—"}${d.securityPatch ? ` <span class="muted sm">· ${t("d.k.patch")} ${esc(d.securityPatch)}</span>` : ""}`)}
-        ${kv(t("d.k.storage"), fmtGbFromMb(d.freeStorageMb))}${kv(t("d.k.serial"), esc(d.serial || "—"))}${kv(t("d.k.imei"), esc(d.imei || "—"))}
-        ${d.phoneNumber ? kv(t("d.k.sim"), esc(d.phoneNumber)) : ""}
-        ${kv(t("d.k.location"), d.location ? `<a href="https://www.openstreetmap.org/?mlat=${d.location.lat}&mlon=${d.location.lon}#map=16/${d.location.lat}/${d.location.lon}" target="_blank" rel="noopener">${ic("pin")} ${t("d.k.location.map")}</a> <span class="muted sm">· ${ago(d.location.at)}${d.location.accuracy ? ` · ±${Math.round(d.location.accuracy)} m` : ""}</span>` : `<span class="muted">—</span>`)}
-        ${kv(t("d.k.usage"), d.usageAccess ? `<span class="pill ok plain">${t("common.on")}</span>` : `<span class="muted">${t("d.k.usage.no")}</span>`)}
-        ${d.autoBlocker ? kv(t("d.k.autoblocker"), /^off/.test(d.autoBlocker) ? `<span class="pill ok plain">${t("d.k.autoblocker.off")}</span>` : /^not found/.test(d.autoBlocker) ? `<span class="muted">${t("d.k.autoblocker.none")}</span>` : `<span class="pill warn plain">${t("d.k.autoblocker.on")}</span> <span class="muted sm">· ${esc(d.autoBlocker)}</span>`) : ""}
-        ${kv(t("d.k.enrolled"), when(d.enrolledAt))}
-      </dl>
 
-      <h3 style="margin:24px 0 8px">${t("d.data.h")} <span class="muted sm" style="font-weight:400">· ${t("d.data.month")}</span></h3>
-      <div class="datasum">
-        <div><span class="k"><i style="background:${CHART.mobile}"></i>${t("d.data.mobile")}</span><b class="${budget && overPct > 100 ? "over" : ""}">${fmtBytes(usage.month.mobileBytes)}</b>${budget ? `<div class="budget"><i style="width:${Math.min(100, overPct)}%" class="${overPct > 100 ? "over" : overPct > 80 ? "warn" : ""}"></i></div><span class="hint">${t("d.data.budget", { b: fmtGbFromMb(budget), pct: overPct })}</span>` : ""}</div>
-        <div><span class="k"><i style="background:${CHART.wifi}"></i>${t("d.data.wifi")}</span><b>${fmtBytes(usage.month.wifiBytes)}</b></div>
-        <div><span class="k">${t("d.data.today")}</span><b>${fmtBytes((today?.mobileBytes ?? 0) + (today?.wifiBytes ?? 0))}</b></div>
-      </div>
-      <div class="row between" style="margin-top:12px"><span></span><div class="seg sm"><button class="on" data-uview="chart">${t("d.data.chart")}</button><button data-uview="table">${t("d.data.table")}</button></div></div>
-      <div id="uchart">${usageChart(usage)}</div><div id="utable" class="hidden">${usageTable(usage)}</div>
-      ${appUsage.length ? `<h4 class="subh">${t("d.data.apps")}</h4><div class="apptime">${appUsage.slice(0, 8).map(([pkg, m]) => `<div><span>${esc(known.get(pkg) ?? pkg)}</span><i><b style="width:${Math.min(100, (m / Math.max(1, appUsage[0][1])) * 100)}%"></b></i><span class="nowrap">${minutes(m)}</span></div>`).join("")}</div>` : ""}
+      <section data-pane="main">
+        <div class="facts">
+          ${fact(t("d.k.battery"), battery(d))}
+          ${fact(t("d.k.network"), netPill(d), [d.signal != null && d.signal >= 0 ? `${Math.min(4, d.signal)}/4` : "", esc(d.simOperator || "")].filter(Boolean).join(" · "))}
+          ${fact(t("d.k.seen"), ago(d.lastSeen), d.live ? `${ic("zap")} ${t("state.live")}` : t("d.k.live.no"))}
+          ${fact(t("d.data.mobile.month"), `<span class="${budget && overPct > 100 ? "over" : ""}">${fmtBytes(usage.month.mobileBytes)}</span>`, budget ? t("d.data.budget", { b: fmtGbFromMb(budget), pct: overPct }) : "")}
+        </div>
 
-      <h3 style="margin:24px 0 8px">${t("d.map.h")}</h3>
-      <div id="mapSlot">${mapCard(d, id)}</div>
+        ${canWrite() ? `<h3 class="sech">${t("d.controls")}</h3><p class="hint" style="margin:0">${d.live ? t("d.controls.live") : t("d.controls.poll")}</p>
+        <div class="cmdgrid main">
+          <button class="btn ghost" data-cmd="locate">${ic("pin")} ${t("cmd.locate")}</button><button class="btn ghost" data-cmd="ring">${ic("bell")} ${t("cmd.ring")}</button>
+          <button class="btn ghost" data-cmd="lock">${ic("lock")} ${t("cmd.lock")}</button><button class="btn ghost" data-cmd="refresh">${ic("refresh")} ${t("cmd.refresh")}</button>
+        </div>
+        <div class="cmdgrid"><button class="btn quiet sm" data-cmd="reboot">${t("cmd.reboot")}</button><button class="btn quiet sm" data-cmd="${d.released ? "relock" : "release"}">${d.released ? t("cmd.relock") : t("cmd.release")}</button></div>` : ""}
 
-      ${canWrite() ? `<h3 style="margin:24px 0 2px">${t("d.controls")}</h3><p class="hint" style="margin:0">${d.live ? t("d.controls.live") : t("d.controls.poll")}</p>
-      <div class="cmdgrid">
-        <button class="btn ghost" data-cmd="refresh">${ic("refresh")} ${t("cmd.refresh")}</button><button class="btn ghost" data-cmd="lock">${ic("lock")} ${t("cmd.lock")}</button><button class="btn ghost" data-cmd="reboot">${t("cmd.reboot")}</button>
-        <button class="btn ghost" data-cmd="${d.released ? "relock" : "release"}">${d.released ? t("cmd.relock") : t("cmd.release")}</button>
-        <button class="btn ghost" data-cmd="ring">${ic("bell")} ${t("cmd.ring")}</button><button class="btn ghost" data-cmd="locate">${ic("pin")} ${t("cmd.locate")}</button>
-        ${d.lostMode ? `<button class="btn" data-cmd="found">${t("cmd.found")}</button>` : `<button class="btn ghost" id="lostBtn" style="color:var(--bad);border-color:var(--bad-bd)">${ic("pin")} ${t("cmd.lost")}</button>`}
-        <button class="btn ghost" id="wipeBtn" style="color:var(--bad);border-color:var(--bad-bd)">${ic("trash")} ${t("cmd.wipe")}</button>
-      </div>` : ""}
+        <h3 class="sech">${t("d.map.h")}</h3>
+        <div id="mapSlot">${mapCard(d, id)}</div>
 
-      <h3 style="margin:24px 0 4px">${t("d.config")}</h3>
-      <div class="grid g2" style="gap:0 14px">
-        <div class="field"><label for="dDriver">${t("d.f.driver")}</label><input id="dDriver" value="${esc(d.driverName)}" ${ro()}></div>
-        <div class="field"><label for="dDriverPhone">${t("d.f.driverPhone")}</label><input id="dDriverPhone" value="${esc(d.driverPhone)}" ${ro()}></div>
-        <div class="field"><label for="dVehicle">${t("d.f.vehicle")}</label><input id="dVehicle" value="${esc(d.vehicle)}" placeholder="Toyota Prado · LT 452 AB" ${ro()}></div>
-        <div class="field"><label for="dName">${t("d.f.name")}</label><input id="dName" value="${esc(d.name)}" ${ro()}></div>
-      </div>
-      <div class="field"><label for="dGroup">${t("d.f.group")}</label><select id="dGroup" ${ro()}><option value="">${t("d.f.group.none")}</option>${gs.map((g) => `<option value="${g.id}" ${g.id === d.groupId ? "selected" : ""}>${esc(g.name)}</option>`).join("")}</select></div>
-      <div class="field"><label>${t("d.f.apps")}</label>
-        ${check("dOverride", t("d.f.override"), t("d.f.override.h"), !!d.allowedOverride, ro())}
-        <div class="apps" id="dApps">${[...known].map(([p, l]) => `<label><input type="checkbox" value="${esc(p)}" data-label="${esc(l)}" ${eff.includes(p) ? "checked" : ""} ${ro()}> ${esc(l)} <small>${esc(p)}${managed.some((m) => m.pkg === p) ? ` · ${ic("pkg")}` : ""}</small></label>`).join("") || `<label class="muted">${t("d.f.noapps")}</label>`}</div>${everyone.length ? `<p class="hint">${t("a.also", { list: everyone.map((a) => esc(a.label)).join(", ") })}</p>` : ""}</div>
-      <div class="field"><label for="dMsg">${t("d.f.msg")} <span class="muted">${t("common.optional")}</span></label><input id="dMsg" value="${esc(d.messageOverride ?? "")}" placeholder="${esc(t("d.f.msg.ph"))}" ${ro()}></div>
-      <div class="field"><label for="dNotes">${t("d.f.notes")}</label><textarea id="dNotes" rows="2" ${ro()}>${esc(d.notes)}</textarea></div>
-      ${d.lastError ? `<h3 style="margin:24px 0 8px">${t("d.error")}</h3>${/VERIFICATION_FAILURE|Install not allowed/i.test(d.lastError) ? `<div class="banner warn" style="margin-bottom:10px">${ic("alert")}<div class="t"><b>${t("d.error.autoblocker")}</b><span>${t("d.error.autoblocker.p")}</span></div></div>` : ""}<pre class="box">${esc(d.lastError)}</pre>` : ""}
-      ${d.lastCrash ? `<h3 style="margin:24px 0 8px">${t("d.crash")}</h3><pre class="box">${esc(d.lastCrash)}</pre>` : ""}
-      <h3 style="margin:24px 0 8px">${t("d.cmds")}</h3>
-      <div class="card tablecard"><table><tbody>${d.commands.map((c) => `<tr><td><b>${esc(t(`cmd.${c.type}`) === `cmd.${c.type}` ? c.type : t(`cmd.${c.type}`).replace(/…$/, ""))}</b></td><td>${c.status === "done" ? `<span class="pill ok">${t("cmd.done")}</span>` : c.status === "failed" ? `<span class="pill bad">${t("cmd.failed")}</span>` : `<span class="pill warn">${esc(c.status)}</span>`}${c.error ? ` <span class="muted sm">${esc(c.error)}</span>` : ""}</td><td class="muted sm nowrap">${ago(c.created_at)}</td></tr>`).join("") || `<tr><td class="muted">${t("d.cmds.none")}</td></tr>`}</tbody></table></div>
+        <h3 class="sech">${t("d.data.h")} <span class="muted sm" style="font-weight:400">· ${t("d.data.month")}</span></h3>
+        <div class="datasum">
+          <div><span class="k"><i style="background:${CHART.mobile}"></i>${t("d.data.mobile")}</span><b class="${budget && overPct > 100 ? "over" : ""}">${fmtBytes(usage.month.mobileBytes)}</b>${budget ? `<div class="budget"><i style="width:${Math.min(100, overPct)}%" class="${overPct > 100 ? "over" : overPct > 80 ? "warn" : ""}"></i></div><span class="hint">${t("d.data.budget", { b: fmtGbFromMb(budget), pct: overPct })}</span>` : ""}</div>
+          <div><span class="k"><i style="background:${CHART.wifi}"></i>${t("d.data.wifi")}</span><b>${fmtBytes(usage.month.wifiBytes)}</b></div>
+          <div><span class="k">${t("d.data.today")}</span><b>${fmtBytes((today?.mobileBytes ?? 0) + (today?.wifiBytes ?? 0))}</b></div>
+        </div>
+        <div class="row between" style="margin-top:12px"><span></span><div class="seg sm"><button class="on" data-uview="chart">${t("d.data.chart")}</button><button data-uview="table">${t("d.data.table")}</button></div></div>
+        <div id="uchart">${usageChart(usage)}</div><div id="utable" class="hidden">${usageTable(usage)}</div>
+        ${appUsage.length ? `<h4 class="subh">${t("d.data.apps")}</h4><div class="apptime">${appUsage.slice(0, 8).map(([pkg, m]) => `<div><span>${esc(known.get(pkg) ?? pkg)}</span><i><b style="width:${Math.min(100, (m / Math.max(1, appUsage[0][1])) * 100)}%"></b></i><span class="nowrap">${minutes(m)}</span></div>`).join("")}</div>` : ""}
+
+        ${canWrite() ? `<div class="dangerzone"><h3>${t("d.danger")}</h3><p class="hint" style="margin:2px 0 0">${t("d.danger.p")}</p>
+          <div class="cmdgrid">
+            ${d.lostMode ? `<button class="btn" data-cmd="found">${t("cmd.found")}</button>` : dangerBtn('id="lostBtn"', "pin", t("cmd.lost"))}
+            ${dangerBtn('id="wipeBtn"', "trash", t("cmd.wipe"))}
+            ${dangerBtn('id="del"', "trash", t("d.remove"))}
+          </div></div>` : ""}
+      </section>
+
+      <section data-pane="config" hidden>
+        <h3 class="sech first">${t("d.who")}</h3>
+        <div class="grid g2" style="gap:0 14px">
+          <div class="field"><label for="dDriver">${t("d.f.driver")}</label><input id="dDriver" value="${esc(d.driverName)}" ${ro()}></div>
+          <div class="field"><label for="dDriverPhone">${t("d.f.driverPhone")}</label><input id="dDriverPhone" value="${esc(d.driverPhone)}" ${ro()}></div>
+          <div class="field"><label for="dVehicle">${t("d.f.vehicle")}</label><input id="dVehicle" value="${esc(d.vehicle)}" placeholder="Toyota Prado · LT 452 AB" ${ro()}></div>
+          <div class="field"><label for="dName">${t("d.f.name")}</label><input id="dName" value="${esc(d.name)}" ${ro()}></div>
+        </div>
+        <div class="field"><label for="dNotes">${t("d.f.notes")}</label><textarea id="dNotes" rows="2" ${ro()}>${esc(d.notes)}</textarea></div>
+
+        <h3 class="sech">${t("d.f.apps")}</h3>
+        <div class="field" style="margin-top:0"><label for="dGroup">${t("d.f.group")}</label><select id="dGroup" ${ro()}><option value="">${t("d.f.group.none")}</option>${gs.map((g) => `<option value="${g.id}" ${g.id === d.groupId ? "selected" : ""}>${esc(g.name)}</option>`).join("")}</select></div>
+        ${everyone.length ? `<p class="hint">${t("a.also", { list: everyone.map((a) => esc(a.label)).join(", ") })}</p>` : ""}
+        <div class="field">
+          ${check("dOverride", t("d.f.override"), t("d.f.override.h"), !!d.allowedOverride, ro())}
+          <div class="apps ${d.allowedOverride ? "" : "hidden"}" id="dApps">${[...known].map(([p, l]) => `<label><input type="checkbox" value="${esc(p)}" data-label="${esc(l)}" ${eff.includes(p) ? "checked" : ""} ${ro()}> ${esc(l)} <small>${esc(p)}${managed.some((m) => m.pkg === p) ? ` · ${ic("pkg")}` : ""}</small></label>`).join("") || `<label class="muted">${t("d.f.noapps")}</label>`}</div></div>
+        <div class="field"><label for="dMsg">${t("d.f.msg")} <span class="muted">${t("common.optional")}</span></label><input id="dMsg" value="${esc(d.messageOverride ?? "")}" placeholder="${esc(t("d.f.msg.ph"))}" ${ro()}></div>
+      </section>
+
+      <section data-pane="tech" hidden>
+        <dl class="kv">
+          ${kv(t("d.k.app"), `${esc(d.agentVersion ?? "—")}${outdated ? ` <span class="pill warn plain">${t("d.outdated")}</span>` : ""}`)}
+          ${kv(t("d.k.mgmt"), d.deviceOwner ? `<span class="pill ok">${t("d.managed")}</span>` : `<span class="pill bad">${t("d.notmanaged")}</span>`)}
+          ${kv(t("d.k.live"), d.live ? `<span class="pill info plain">${ic("zap")} ${t("state.live")}</span>` : `<span class="muted">${t("d.k.live.no")}</span>`)}
+          ${kv(t("d.f.name"), esc(d.name))}
+          ${kv(t("d.k.model"), esc(modelName(d.model)) || "—")}
+          ${kv(t("d.k.android"), `${esc(androidShort(d.osVersion)) || "—"}${d.securityPatch ? ` <span class="muted sm">· ${t("d.k.patch")} ${esc(d.securityPatch)}</span>` : ""}`)}
+          ${kv(t("d.k.storage"), fmtGbFromMb(d.freeStorageMb))}${d.serial ? kv(t("d.k.serial"), esc(d.serial)) : ""}${d.imei ? kv(t("d.k.imei"), esc(d.imei)) : ""}
+          ${d.phoneNumber ? kv(t("d.k.sim"), esc(d.phoneNumber)) : ""}
+          ${kv(t("d.k.usage"), d.usageAccess ? `<span class="pill ok plain">${t("common.on")}</span>` : `<span class="muted">${t("d.k.usage.no")}</span>`)}
+          ${d.autoBlocker ? kv(t("d.k.autoblocker"), /^off/.test(d.autoBlocker) ? `<span class="pill ok plain">${t("d.k.autoblocker.off")}</span>` : /^not found/.test(d.autoBlocker) ? `<span class="muted">${t("d.k.autoblocker.none")}</span>` : `<span class="pill warn plain">${t("d.k.autoblocker.on")}</span> <span class="muted sm">· ${esc(d.autoBlocker)}</span>`) : ""}
+          ${kv(t("d.k.enrolled"), when(d.enrolledAt))}
+        </dl>
+        ${d.lastError ? `<h3 class="sech">${t("d.error")}</h3>${/VERIFICATION_FAILURE|Install not allowed/i.test(d.lastError) ? `<div class="banner warn" style="margin-bottom:10px">${ic("alert")}<div class="t"><b>${t("d.error.autoblocker")}</b><span>${t("d.error.autoblocker.p")}</span></div></div>` : ""}<pre class="box">${esc(d.lastError)}</pre>` : ""}
+        ${d.lastCrash ? `<h3 class="sech">${t("d.crash")}</h3><pre class="box">${esc(d.lastCrash)}</pre>` : ""}
+        <h3 class="sech">${t("d.cmds")}</h3>
+        <div class="card tablecard"><table><tbody>${d.commands.map((c) => `<tr><td><b>${esc(t(`cmd.${c.type}`) === `cmd.${c.type}` ? c.type : t(`cmd.${c.type}`).replace(/…$/, ""))}</b></td><td>${c.status === "done" ? `<span class="pill ok">${t("cmd.done")}</span>` : c.status === "failed" ? `<span class="pill bad">${t("cmd.failed")}</span>` : `<span class="pill warn">${esc(c.status)}</span>`}${c.error ? ` <span class="muted sm">${esc(c.error)}</span>` : ""}</td><td class="muted sm nowrap">${ago(c.created_at)}</td></tr>`).join("") || `<tr><td class="muted">${t("d.cmds.none")}</td></tr>`}</tbody></table></div>
+      </section>
     </div>
-    ${canWrite() ? `<div class="ft"><button class="btn" id="save">${t("d.save")}</button>${d.approved ? "" : `<button class="btn" id="approveOne">${t("d.approve")}</button>`}<span class="grow"></span><button class="btn ghost" id="del" style="color:var(--bad);border-color:var(--bad-bd)">${ic("trash")} ${t("d.remove")}</button></div>` : ""}`, true);
+    ${canWrite() ? `<div class="ft" id="dFt"><button class="btn" id="save">${t("d.save")}</button>${d.approved ? "" : `<button class="btn" id="approveOne">${t("d.approve")}</button>`}</div>` : ""}`, true);
+  const showPane = (k) => {
+    devTab = k;
+    $$("[data-pane]", dlg).forEach((x) => { x.hidden = x.dataset.pane !== k; });
+    $$("[data-pane-tab]", dlg).forEach((x) => { const on = x.dataset.paneTab === k; x.classList.toggle("on", on); x.setAttribute("aria-selected", on); });
+    $("#save", dlg)?.classList.toggle("hidden", k !== "config");
+    $("#dFt", dlg)?.classList.toggle("hidden", k !== "config" && d.approved);
+    $(".bd", dlg).scrollTop = 0;
+    if (k === "main" && devMap) setTimeout(() => devMap?.invalidateSize(), 40);
+  };
+  $$("[data-pane-tab]", dlg).forEach((b) => b.onclick = () => showPane(b.dataset.paneTab));
+  $("#dOverride", dlg)?.addEventListener("change", (e) => $("#dApps", dlg).classList.toggle("hidden", !e.target.checked));
   $$("[data-uview]", dlg).forEach((b) => b.onclick = () => { $$("[data-uview]", dlg).forEach((x) => x.classList.toggle("on", x === b)); $("#uchart").classList.toggle("hidden", b.dataset.uview !== "chart"); $("#utable").classList.toggle("hidden", b.dataset.uview !== "table"); });
   drawDeviceMap(d);
+  showPane(devTab);
   const reopen = () => openDevice(id);
   const send = async (type, body = {}, msgOk = true) => {
     if (type === "locate") {
@@ -633,23 +716,51 @@ function appCatalogue(apps) {
   return [...m.values()].sort((a, b) => (b.allowed - a.allowed) || (b.devices > 0) - (a.devices > 0) || a.label.localeCompare(b.label));
 }
 
-// ---------- Groups ----------
-pages.groups = {
-  title: "g.title", sub: "g.sub",
-  actions: () => (canWrite() ? `<button class="btn" id="newGroup" title="${esc(t("g.new"))}">${ic("plus")}<span class="lbl">${t("g.new")}</span></button>` : ""),
-  skeleton: () => skForm(),
-  load: () => Promise.all([get("/api/groups"), get("/api/apps")]),
-  render([gs]) {
-    return gs.length ? `<div class="grid g3">${gs.map((g) => `<div class="card pad"><div class="row between"><h3>${esc(g.name)}</h3><span class="pill plain">${t("common.phones", { n: g.devices })}</span></div>
+// ---------- Allowed apps: what drivers may open (everyone, then per group) ----------
+const ap = { seg: "all", more: false };
+pages.apps = {
+  title: "ap.title", sub: "ap.sub",
+  actions: () => (ap.seg === "groups" && canWrite() ? `<button class="btn" id="newGroup" title="${esc(t("g.new"))}">${ic("plus")}<span class="lbl">${t("g.new")}</span></button>` : ""),
+  skeleton: () => skTable(6),
+  load: () => Promise.all([get("/api/apps"), get("/api/groups"), get("/api/managed-apps")]),
+  render([apps, gs, managed]) {
+    const seg = `<div class="toolbar"><div class="seg"><button data-apseg="all" class="${ap.seg === "all" ? "on" : ""}">${t("ap.seg.all")}</button><button data-apseg="groups" class="${ap.seg === "groups" ? "on" : ""}">${t("ap.seg.groups")}<small>${gs.length}</small></button></div></div>`;
+    if (ap.seg === "groups") return seg + `<p class="lead">${t("ap.groups.p")}</p>` + (gs.length ? `<div class="grid g3">${gs.map((g) => `<div class="card pad"><div class="row between"><h3>${esc(g.name)}</h3><span class="pill plain">${t("common.phones", { n: g.devices })}</span></div>
       <p class="muted" style="margin:10px 0 14px;min-height:40px">${g.allowedApps.length ? g.allowedApps.map((a) => esc(a.label)).join(", ") : t("g.noapps")}</p>
       ${g.message ? `<p class="sm" style="margin:0 0 12px;color:var(--text-2)">“${esc(g.message)}”</p>` : ""}
       ${canWrite() ? `<button class="btn ghost sm" data-edit="${g.id}">${t("g.edit")}</button>` : ""}</div>`).join("")}</div>`
-      : `<div class="card empty"><div class="ico">${ic("layers")}</div><h3>${t("g.empty.h")}</h3><p>${t("g.empty.p")}</p>${canWrite() ? `<button class="btn" id="newGroup2">${ic("plus")} ${t("g.create")}</button>` : ""}</div>`;
+      : `<div class="card empty"><div class="ico">${ic("layers")}</div><h3>${t("g.empty.h")}</h3><p>${t("g.empty.p")}</p>${canWrite() ? `<button class="btn" id="newGroup2">${ic("plus")} ${t("g.create")}</button>` : ""}</div>`);
+    const installed = new Set(managed.map((m) => m.pkg));
+    const cat = appCatalogue(apps), on = cat.filter((a) => a.allowed), off = cat.filter((a) => !a.allowed);
+    const row = (a, extra = "") => `<label class="approw ${extra}" data-q="${esc((a.label + " " + a.pkg).toLowerCase())}"><input type="checkbox" class="aAllow" value="${esc(a.pkg)}" data-label="${esc(a.label)}" ${a.allowed ? "checked" : ""} ${ro()}>
+      <span class="nm"><b>${esc(a.label)}</b><small>${esc(a.pkg)}</small></span>${installed.has(a.pkg) ? `<span class="pill info plain">${t("a.managed")}</span>` : ""}${a.system ? `<span class="pill plain">${t("a.system")}</span>` : ""}
+      <span class="where">${a.devices ? t("common.phones", { n: a.devices }) : t("a.notyet")}</span></label>`;
+    return seg + `<div id="aRows">
+      <div class="card"><div class="hd"><div><h3>${t("ap.on.h", { n: on.length })}</h3><p>${t("ap.on.p")}</p></div></div>
+        ${on.map((a) => row(a)).join("") || `<div class="pad muted">${t("ap.on.none")}</div>`}</div>
+      <div class="card section"><div class="hd"><div><h3>${t("ap.off.h", { n: off.length })}</h3><p>${t("ap.off.p")}</p></div><div class="search" style="max-width:240px">${ic("search")}<input id="aSearch" placeholder="${esc(t("a.search"))}" autocomplete="off"></div></div>
+        <div id="aOff" class="${ap.more ? "" : "collapsed"}">${off.map((a, n) => row(a, n >= 8 ? "extra" : "")).join("")}</div>
+        ${off.length > 8 ? `<div class="pad morebar"><button class="btn quiet sm" id="aMore">${ap.more ? t("ap.less") : t("ap.more", { n: off.length - 8 })}</button></div>` : ""}
+      </div></div>
+      ${canWrite() ? `<details class="card adv section"><summary>${t("ap.add.h")}</summary><div class="pad row" style="gap:8px;flex-wrap:wrap"><input id="aPkg" placeholder="com.company.app" style="flex:2;min-width:180px"><input id="aLabel" placeholder="${esc(t("m.label"))}" style="flex:1;min-width:140px"><button class="btn ghost" id="aAdd">${t("g.pkg.add")}</button><span class="hint" style="flex-basis:100%">${t("a.hint")}</span></div></details>` : ""}`;
   },
-  bind([gs, apps]) {
+  bind([apps, gs]) {
+    $$("[data-apseg]").forEach((b) => b.onclick = () => { ap.seg = b.dataset.apseg; paint("apps", pageData.apps); });
     const open = (g) => groupDialog(g, apps);
     $("#newGroup")?.addEventListener("click", () => open(null)); $("#newGroup2")?.addEventListener("click", () => open(null));
     $$("[data-edit]").forEach((b) => b.onclick = () => open(gs.find((g) => g.id === +b.dataset.edit)));
+    const checked = () => $$("#aRows .aAllow:checked").map((i) => ({ pkg: i.value, label: i.dataset.label }));
+    $$("#aRows .aAllow").forEach((i) => i.addEventListener("change", async (e) => {
+      try { await api("PUT", "/api/settings", { allowedApps: checked() }); toast(e.target.checked ? t("ap.allowed", { app: e.target.dataset.label }) : t("ap.blocked", { app: e.target.dataset.label })); refresh(); }
+      catch (err) { e.target.checked = !e.target.checked; fail(err); }
+    }));
+    $("#aSearch")?.addEventListener("input", (e) => { const q = e.target.value.trim().toLowerCase(); $("#aOff").classList.toggle("searching", !!q); $$("#aOff .approw").forEach((r) => r.classList.toggle("hidden", !!q && !r.dataset.q.includes(q))); });
+    $("#aMore")?.addEventListener("click", () => { ap.more = !ap.more; paint("apps", pageData.apps); });
+    $("#aAdd")?.addEventListener("click", (e) => busy(e.currentTarget, async () => {
+      const p = $("#aPkg").value.trim(); if (!/^[A-Za-z0-9_.]+$/.test(p)) return toast(t("g.pkg.bad"), "err");
+      const list = checked().filter((a) => a.pkg !== p); list.push({ pkg: p, label: $("#aLabel").value.trim() || p });
+      await api("PUT", "/api/settings", { allowedApps: list }); toast(t("a.saved")); refresh();
+    }));
   },
 };
 function groupDialog(g, apps) {
@@ -675,33 +786,44 @@ function groupDialog(g, apps) {
 }
 
 // ---------- Add phones ----------
+let provMethod = "usb";
 pages.provision = {
   title: "p.title", sub: "p.sub",
   skeleton: () => skForm(),
   load: () => Promise.all([get("/api/enroll-tokens"), get("/api/groups")]),
   render([tokens, gs]) {
-    return `
-    <div class="grid g2">
-      <div class="card pad"><h3>${t("p.how")}</h3>
-        <ol class="steps" style="margin-top:16px">
-          <li><div><b>${t("p.s1")}</b><div class="muted sm">${t("p.s1.d")}</div></div></li>
-          <li><div><b>${t("p.s2")}</b><div class="muted sm">${t("p.s2.d")}</div></div></li>
-          <li><div><b>${t("p.s3")}</b><div class="muted sm">${t("p.s3.d")}</div></div></li>
-          <li><div><b>${t("p.s4")}</b><div class="muted sm">${t("p.s4.d")}</div></div></li>
-        </ol>
-        <div class="banner info" style="margin-top:18px">${ic("info")}<div class="t"><b>${t("p.usb.h")}</b><span>${t("p.usb.p")} <a href="${BASE}setup/setup-phone.ps1" download>${t("p.usb.win")}</a> · <a href="${BASE}setup/setup-phone.sh" download>${t("p.usb.mac")}</a></span></div></div>
-      </div>
-      ${canWrite() ? `<div class="card pad"><h3>${t("p.new")}</h3><p class="hint" style="margin-top:4px">${t("p.new.p")}</p>
-        <div class="field"><label for="tLabel">${t("p.label")}</label><input id="tLabel" value="Driver"><p class="hint" id="tHint">${t("p.label.h", { l: "Driver" })}</p></div>
+    const valid = tokens.filter((tk) => tk.expiresAt > Date.now() && tk.uses < tk.maxUses), cur = valid[0];
+    const step = (h, d) => `<li><div><b>${h}</b><div class="muted sm">${d}</div></div></li>`;
+    const form = `<div class="field"><label for="tLabel">${t("p.label")}</label><input id="tLabel" value="Driver"><p class="hint" id="tHint">${t("p.label.h", { l: "Driver" })}</p></div>
         <div class="field"><label for="tGroup">${t("p.group")}</label><select id="tGroup"><option value="">${t("dev.groups.none")}</option>${gs.map((g) => `<option value="${g.id}">${esc(g.name)}</option>`).join("")}</select></div>
-        <div class="row" style="margin-top:14px"><div class="field" style="margin:0;flex:1"><label for="tDays">${t("p.days")}</label><input id="tDays" type="number" value="30" min="1" max="365"></div><div class="field" style="margin:0;flex:1"><label for="tMax">${t("p.max")}</label><input id="tMax" type="number" value="200" min="1"></div></div>
-        <button class="btn" id="tCreate" style="margin-top:18px">${ic("qr")} ${t("p.create")}</button></div>` : ""}
+        <div class="row" style="margin-top:14px"><div class="field" style="margin:0;flex:1"><label for="tDays">${t("p.days")}</label><input id="tDays" type="number" value="365" min="1" max="365"></div><div class="field" style="margin:0;flex:1"><label for="tMax">${t("p.max")}</label><input id="tMax" type="number" value="200" min="1"></div></div>
+        <button class="btn" id="tCreate" style="margin-top:18px">${ic("qr")} ${t("p.create")}</button>`;
+    return `
+    <div class="grid g2" style="align-items:start">
+      <div class="card pad"><div class="row between" style="flex-wrap:wrap;gap:10px"><h3>${t("p.how")}</h3>
+          <div class="seg sm"><button data-pm="usb" class="${provMethod === "usb" ? "on" : ""}">${t("p.m.usb")}</button><button data-pm="qr" class="${provMethod === "qr" ? "on" : ""}">${t("p.m.qr")}</button></div></div>
+        <p class="hint" style="margin:6px 0 0">${provMethod === "usb" ? t("p.m.usb.p") : t("p.m.qr.p")}</p>
+        ${provMethod === "usb" ? `<ol class="steps" style="margin-top:16px">
+          ${step(t("p.u1"), t("p.u1.d"))}${step(t("p.u2"), t("p.u2.d"))}
+          <li><div><b>${t("p.u3")}</b><div class="muted sm">${t("p.u3.d")}</div>
+            <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:8px"><a class="btn ghost sm" href="${BASE}setup/setup-phone.cmd" download>${ic("download")} setup-phone.cmd</a><a class="btn ghost sm" href="${BASE}setup/setup-phone.ps1" download>${ic("download")} setup-phone.ps1</a><a class="btn quiet sm" href="${BASE}setup/setup-phone.sh" download>${t("p.usb.mac")}</a></div></div></li>
+          ${step(t("p.u4"), t("p.u4.d"))}${step(t("p.s4"), t("p.s4.d"))}
+        </ol>` : `<ol class="steps" style="margin-top:16px">
+          ${step(t("p.s1"), t("p.s1.d"))}${step(t("p.s2"), t("p.s2.d"))}${step(t("p.s3"), t("p.s3.d"))}${step(t("p.s4"), t("p.s4.d"))}
+        </ol>`}
+      </div>
+      <div class="card pad">
+        ${cur ? `<h3>${t("p.cur.h")}</h3><p class="hint" style="margin-top:4px">${t("p.cur.p", { n: cur.devices ?? 0, date: when(cur.expiresAt) })}</p>
+          <div class="codebox"><code>${esc(cur.code)}</code><button class="btn ghost sm" data-copy="${esc(cur.code)}">${ic("copy")} ${t("p.copy")}</button><button class="btn ghost sm" data-qr="${esc(cur.token)}">${ic("qr")} ${t("p.showqr")}</button></div>
+          ${canWrite() ? `<details class="adv inline"><summary>${t("p.new")}</summary><p class="hint" style="margin-top:4px">${t("p.new.p")}</p>${form}</details>` : ""}`
+        : `<h3>${t("p.new")}</h3><p class="hint" style="margin-top:4px">${tokens.length ? t("p.cur.none") : t("p.new.p")}</p>${canWrite() ? form : ""}`}
+      </div>
     </div>
-    <h3 style="margin:28px 0 12px">${t("p.codes")}</h3>
+    ${tokens.length > 1 || (tokens.length && !cur) ? `<h3 style="margin:28px 0 12px">${t("p.codes")}</h3>
     <div class="card tablecard"><div class="tablewrap"><table><thead><tr><th>${t("th.name")}</th><th>${t("th.code")}</th><th>${t("th.group")}</th><th>${t("th.used")}</th><th>${t("th.expires")}</th><th></th></tr></thead><tbody>
       ${tokens.map((tk) => `<tr><td><b>${esc(tk.label)}</b></td><td><code style="font-size:13.5px;letter-spacing:.05em">${esc(tk.code)}</code> <button class="btn quiet sm icon" data-copy="${esc(tk.code)}" title="${esc(t("p.copy"))}" aria-label="${esc(t("p.copy"))}">${ic("copy")}</button></td><td>${esc(tk.groupName ?? "—")}</td><td><b>${tk.devices ?? 0}</b> <span class="muted sm">· ${t("p.setups", { n: tk.uses })}</span></td><td class="muted">${when(tk.expiresAt)}${tk.expiresAt < Date.now() ? ` <span class="pill bad plain">${t("p.expired")}</span>` : ""}</td>
-        <td style="text-align:right" class="nowrap"><button class="btn ghost sm" data-qr="${esc(tk.token)}">${ic("qr")} ${t("p.showqr")}</button>${canWrite() ? ` <button class="btn quiet sm icon" data-rm="${esc(tk.token)}" title="${esc(t("p.del"))}" aria-label="${esc(t("p.del"))}">${ic("trash")}</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="6"><div class="empty"><div class="ico">${ic("qr")}</div><h3>${t("p.none.h")}</h3><p>${t("p.none.p")}</p></div></td></tr>`}
-    </tbody></table></div></div>`;
+        <td style="text-align:right" class="nowrap"><button class="btn ghost sm" data-qr="${esc(tk.token)}">${ic("qr")} ${t("p.showqr")}</button>${canWrite() ? ` <button class="btn quiet sm icon" data-rm="${esc(tk.token)}" title="${esc(t("p.del"))}" aria-label="${esc(t("p.del"))}">${ic("trash")}</button>` : ""}</td></tr>`).join("")}
+    </tbody></table></div></div>` : ""}`;
   },
   bind() {
     const showQr = async (token, btn) => {
@@ -712,6 +834,7 @@ pages.provision = {
         $("#qPrint").onclick = () => window.print();
       });
     };
+    $$("[data-pm]").forEach((b) => b.onclick = () => { provMethod = b.dataset.pm; paint("provision", pageData.provision); });
     $("#tLabel")?.addEventListener("input", (e) => { $("#tHint").textContent = t("p.label.h", { l: e.target.value || "Driver" }); });
     $("#tCreate")?.addEventListener("click", (e) => busy(e.currentTarget, async () => {
       const r = await api("POST", "/api/enroll-tokens", { label: $("#tLabel").value, groupId: $("#tGroup").value ? +$("#tGroup").value : null, days: +$("#tDays").value, maxUses: +$("#tMax").value });
@@ -723,75 +846,198 @@ pages.provision = {
   },
 };
 
-// ---------- Apps (kiosk versions + managed apps) ----------
+// ---------- reading and sending an APK ----------
+const ONE_PIECE = 45 * 1048576; // the storage refuses files over 50 MB: bigger ones are sent in pieces of PIECE bytes
+const PIECE = 40 * 1048576, MAX_APK = 600 * 1048576;
+const mb = (n) => (n / 1048576).toFixed(n >= 100 * 1048576 ? 0 : 1);
+/** SHA-256 of a file, as hex (phones verify it before installing). */
+async function fileSha256(file) {
+  const d = new Uint8Array(await crypto.subtle.digest("SHA-256", await file.arrayBuffer()));
+  return Array.from(d, (x) => x.toString(16).padStart(2, "0")).join("");
+}
+/** Sends a file (in pieces when it is big) and returns what POST /api/managed-apps needs to find it again. */
+async function sendApk(file, show) {
+  const step = (sent) => show(sent / file.size, t("m.step.send", { pct: Math.floor(sent / file.size * 100), sent: mb(sent), total: mb(file.size) }));
+  if (file.size <= ONE_PIECE) {
+    const up = await api("POST", "/api/uploads", {});
+    await putFile(up.url, file, (r, sent) => step(sent));
+    return { key: up.key };
+  }
+  show(0, t("m.step.hash"));
+  const sha256 = await fileSha256(file), keys = [];
+  for (let off = 0; off < file.size; off += PIECE) {
+    const piece = file.slice(off, Math.min(off + PIECE, file.size));
+    // An upload address is asked for each piece, just before it is used, and a piece that fails is sent again.
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const up = await api("POST", "/api/uploads", {});
+        await putFile(up.url, piece, (r, sent) => step(off + sent));
+        keys.push(up.key); break;
+      } catch (e) { if (attempt >= 4) throw e; show(off / file.size, t("m.step.retry")); await new Promise((r) => setTimeout(r, 2500 * attempt)); }
+    }
+  }
+  return { keys, sha256, size: file.size };
+}
+/** Package name and version of an APK, read from its manifest in the browser (nothing is uploaded). Null when unreadable. */
+async function readApk(file) {
+  try {
+    const u8 = async (a, b) => new Uint8Array(await file.slice(a, b).arrayBuffer());
+    const tail = await u8(Math.max(0, file.size - 66000), file.size), tv = new DataView(tail.buffer);
+    let e = -1; for (let k = tail.length - 22; k >= 0; k--) if (tv.getUint32(k, true) === 0x06054b50) { e = k; break; }
+    if (e < 0) return null;
+    const cdSize = tv.getUint32(e + 12, true), cdOff = tv.getUint32(e + 16, true);
+    const cd = await u8(cdOff, cdOff + cdSize), cv = new DataView(cd.buffer);
+    let q = 0, entry = null;
+    while (q + 46 <= cd.length && cv.getUint32(q, true) === 0x02014b50) {
+      const nameLen = cv.getUint16(q + 28, true), extra = cv.getUint16(q + 30, true), comment = cv.getUint16(q + 32, true);
+      if (new TextDecoder().decode(cd.subarray(q + 46, q + 46 + nameLen)) === "AndroidManifest.xml") { entry = { method: cv.getUint16(q + 10, true), csize: cv.getUint32(q + 20, true), off: cv.getUint32(q + 42, true) }; break; }
+      q += 46 + nameLen + extra + comment;
+    }
+    if (!entry) return null;
+    const lv = new DataView((await u8(entry.off, entry.off + 30)).buffer);
+    const start = entry.off + 30 + lv.getUint16(26, true) + lv.getUint16(28, true);
+    let data = await u8(start, start + entry.csize);
+    if (entry.method === 8) data = new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer());
+    else if (entry.method !== 0) return null;
+    return parseManifest(data);
+  } catch { return null; }
+}
+/** Android's binary XML: the string pool, then the first tag (<manifest>) with package, versionCode and versionName. */
+function parseManifest(b) {
+  const v = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  if (v.getUint16(0, true) !== 0x0003) return null;
+  const strings = [], resIds = [];
+  let q = v.getUint16(2, true);
+  while (q + 8 <= b.length) {
+    const type = v.getUint16(q, true), hsize = v.getUint16(q + 2, true), size = v.getUint32(q + 4, true);
+    if (size < 8) break;
+    if (type === 0x0001) {
+      const count = v.getUint32(q + 8, true), utf8 = !!(v.getUint32(q + 16, true) & 0x100), sStart = v.getUint32(q + 20, true);
+      for (let k = 0; k < count; k++) {
+        let o = q + sStart + v.getUint32(q + hsize + k * 4, true);
+        if (utf8) { if (b[o++] & 0x80) o++; let len = b[o++]; if (len & 0x80) len = ((len & 0x7f) << 8) | b[o++]; strings.push(new TextDecoder().decode(b.subarray(o, o + len))); }
+        else { let len = v.getUint16(o, true); o += 2; if (len & 0x8000) { len = ((len & 0x7fff) << 16) | v.getUint16(o, true); o += 2; } strings.push(new TextDecoder("utf-16le").decode(b.subarray(o, o + len * 2))); }
+      }
+    } else if (type === 0x0180) { for (let o = q + hsize; o + 4 <= q + size; o += 4) resIds.push(v.getUint32(o, true)); }
+    else if (type === 0x0102) {
+      if (strings[v.getUint32(q + 20, true)] !== "manifest") return null;
+      const aStart = v.getUint16(q + 24, true), aSize = v.getUint16(q + 26, true), n = v.getUint16(q + 28, true), out = {};
+      for (let k = 0; k < n; k++) {
+        const a = q + 16 + aStart + k * aSize, ni = v.getUint32(a + 4, true), raw = v.getInt32(a + 8, true), dt = b[a + 15], dv = v.getUint32(a + 16, true);
+        const name = strings[ni] || { 0x0101021b: "versionCode", 0x0101021c: "versionName" }[resIds[ni]] || "";
+        const text = dt === 0x03 ? strings[dv] : raw >= 0 ? strings[raw] : String(dv);
+        if (name === "package") out.pkg = text; else if (name === "versionCode") out.versionCode = dt === 0x03 ? Number(text) : dv; else if (name === "versionName") out.versionName = text;
+      }
+      return out.pkg ? out : null;
+    }
+    q += size;
+  }
+  return null;
+}
+/** Sends a file straight to storage and reports progress (0..1). The API is not in the way: it gives up after 150 s. */
+function putFile(url, file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest();
+    x.open("PUT", url);
+    x.setRequestHeader("content-type", "application/vnd.android.package-archive");
+    x.setRequestHeader("x-upsert", "true");
+    x.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total, e.loaded); };
+    x.onload = () => (x.status >= 200 && x.status < 300 ? resolve() : reject(new Error(t("up.failed", { code: x.status }))));
+    x.onerror = () => reject(new Error(t("up.network")));
+    x.send(file);
+  });
+}
+
+// ---------- Install & update (the kiosk app's versions + the apps installed for the drivers) ----------
 pages.releases = {
   title: "r.title", sub: "r.sub",
   skeleton: () => skTable(4),
   load: () => Promise.all([get("/api/releases"), get("/api/overview"), get("/api/groups"), get("/api/managed-apps"), get("/api/apps")]),
   render([rs, o, gs, managed, apps]) {
     const latest = new Map(); for (const m of managed) if (!latest.has(m.pkg)) latest.set(m.pkg, m);
-    const cat = appCatalogue(apps);
+    const everyone = new Set(apps.filter((a) => a.allowed).map((a) => a.pkg)), cur = rs[0];
     return `
-    <div class="card section" id="appsCat"><div class="hd"><div><h3>${t("a.h")}</h3><p>${t("a.p")}</p></div><input id="aSearch" placeholder="${esc(t("a.search"))}" style="max-width:220px"></div>
-      <div class="tablewrap"><table><thead><tr><th style="width:120px">${t("a.allowed")}</th><th>${t("m.label")}</th><th>${t("m.pkg")}</th><th>${t("a.on")}</th></tr></thead><tbody id="aRows">
-        ${cat.map((a) => `<tr data-q="${esc((a.label + " " + a.pkg).toLowerCase())}"><td><label class="check" style="margin:0"><input type="checkbox" class="aAllow" value="${esc(a.pkg)}" data-label="${esc(a.label)}" ${a.allowed ? "checked" : ""} ${ro()}><span></span></label></td>
-          <td><b>${esc(a.label)}</b>${a.system ? ` <span class="pill plain">${t("a.system")}</span>` : ""}${latest.has(a.pkg) ? ` <span class="pill info plain">${t("a.managed")}</span>` : ""}</td><td><code>${esc(a.pkg)}</code></td>
-          <td class="muted">${a.devices ? t("common.phones", { n: a.devices }) : t("a.notyet")}</td></tr>`).join("")}
-      </tbody></table></div>
-      ${canWrite() ? `<div class="pad row" style="gap:8px;flex-wrap:wrap;border-top:1px solid var(--border)"><input id="aPkg" placeholder="com.company.app" style="flex:2;min-width:180px"><input id="aLabel" placeholder="${esc(t("m.label"))}" style="flex:1;min-width:140px"><button class="btn ghost" id="aAdd">${t("g.pkg.add")}</button><span class="hint" style="flex-basis:100%">${t("a.hint")}</span></div>` : ""}
+    <div class="card hero ${o.outdated ? "warn" : "ok"}">
+      <div class="heromain"><div class="heroic">${ic(o.outdated ? "alert" : "check")}</div>
+        <div class="grow"><h2>${cur ? t("r.cur.h", { v: esc(cur.versionName) }) : t("r.none.h")}</h2><p>${!cur ? t("r.none.p") : o.outdated ? t("r.push.n", { n: o.outdated }) : t("r.push.ok")}</p></div>
+        ${canWrite() && o.outdated ? `<div class="row heroact">${gs.length ? `<select id="rollGroup" aria-label="${esc(t("r.push.which"))}"><option value="">${t("r.push.all")}</option>${gs.map((g) => `<option value="${g.id}">${esc(g.name)}</option>`).join("")}</select>` : ""}<button class="btn" id="rollAll">${t("r.push.go")}</button></div>` : ""}
+      </div>
     </div>
-    ${canWrite() ? `<div class="grid g2"><div class="card pad"><h3>${t("r.kiosk")}</h3><p class="hint" style="margin-top:4px">${t("r.kiosk.p")}</p>
+
+    <div class="card section"><div class="hd"><div><h3>${t("m.h")}</h3><p>${t("m.p")}</p></div></div>
+      ${canWrite() ? `<div class="pad uploader">
+        <label class="filepick" for="mFile">${ic("download")}<span><b id="mPickT">${t("m.pick")}</b><small id="mPickS">${t("m.pick.h")}</small></span><input type="file" id="mFile" accept=".apk"></label>
+        <div id="mForm" class="hidden">
+          <div class="banner bad hidden" id="mErr" style="margin-top:12px">${ic("alert")}<div class="t"><b id="mErrT"></b><span id="mErrP"></span></div></div>
+          <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:0 12px">
+            <div class="field"><label for="mLabel">${t("m.label")}</label><input id="mLabel" placeholder="Confiance Driver"></div>
+            <div class="field"><label for="mPkg">${t("m.pkg")}</label><input id="mPkg" placeholder="com.confiance.driver"></div>
+            <div class="field"><label for="mVName">${t("r.vname")}</label><input id="mVName" placeholder="2.3.0"></div>
+            <div class="field"><label for="mVCode">${t("r.vcode")}</label><input id="mVCode" type="number" placeholder="120"></div>
+          </div>
+          <p class="hint" id="mAuto"></p>
+          <div class="banner warn hidden" id="mLarge" style="margin-top:12px">${ic("info")}<div class="t"><b id="mLargeT"></b><span id="mLargeP"></span></div></div>
+          ${check("mAllow", t("m.allow"), t("m.allow.h"), true)}
+          <div class="progress hidden" id="mProg"><i></i></div><p class="hint hidden" id="mProgT"></p>
+          <button class="btn" id="mUpload" style="margin-top:14px">${ic("download")} ${t("m.go")}</button>
+        </div></div>` : ""}
+      <div class="tablewrap"><table><thead><tr><th>${t("m.label")}</th><th>${t("th.version")}</th><th>${t("m.who")}</th><th>${t("th.size")}</th><th>${t("th.uploaded")}</th><th></th></tr></thead><tbody>
+        ${[...latest.values()].map((m) => { const n = managed.filter((x) => x.pkg === m.pkg).length; return `<tr><td><b>${esc(m.label)}</b><div class="muted sm">${esc(m.pkg)}</div></td><td>${esc(m.versionName)} <span class="muted sm">(${m.versionCode})</span>${n > 1 ? ` <span class="pill plain">${t("m.history", { n })}</span>` : ""}</td><td>${everyone.has(m.pkg) ? `<span class="pill ok plain">${t("m.who.all")}</span>` : `<span class="pill warn plain">${t("m.who.some")}</span> <button class="btn quiet sm" data-go="apps">${t("m.who.fix")}</button>`}</td><td>${(m.size / 1048576).toFixed(1)} ${t("bytes.mb")}</td><td class="muted">${when(m.createdAt)}</td><td style="text-align:right">${canWrite() ? `<button class="btn quiet sm icon" data-mdel="${m.id}" title="${esc(t("common.delete"))}" aria-label="${esc(t("common.delete"))}">${ic("trash")}</button>` : ""}</td></tr>`; }).join("") || `<tr><td colspan="6" class="muted pad">${t("m.none")}</td></tr>`}
+      </tbody></table></div></div>
+
+    <details class="card adv section"><summary>${t("r.versions")} <span class="muted">· ${rs.length}</span></summary>
+      <div class="tablewrap"><table><thead><tr><th>${t("th.version")}</th><th>${t("r.vcode")}</th><th>${t("th.size")}</th><th>${t("th.uploaded")}</th><th>${t("th.fingerprint")}</th></tr></thead><tbody>
+      ${rs.map((r, n) => `<tr><td><b>${esc(r.versionName)}</b> ${n === 0 ? `<span class="pill ok plain">${t("r.current")}</span>` : ""}</td><td>${r.versionCode}</td><td>${(r.size / 1048576).toFixed(1)} ${t("bytes.mb")}</td><td class="muted">${when(r.createdAt)}</td><td><code>${esc(r.sha256.slice(0, 12))}</code></td></tr>`).join("") || `<tr><td colspan="5" class="muted pad">${t("r.none.p")}</td></tr>`}
+      </tbody></table></div>
+      ${rs.length ? `<p class="hint pad" style="margin:0"><a href="${BASE}apk/latest.apk">${ic("download")} ${t("r.download")}</a></p>` : ""}</details>
+    ${canWrite() ? `<details class="card adv section"><summary>${t("r.kiosk")}</summary><div class="pad" style="max-width:560px"><p class="hint" style="margin:0">${t("r.kiosk.p")}</p>
         <div class="field"><label for="apk">${t("r.file")}</label><input type="file" id="apk" accept=".apk" class="w100"></div>
         <div class="row"><div class="field" style="flex:1;margin-top:14px"><label for="vName">${t("r.vname")}</label><input id="vName" placeholder="1.4.0"></div><div class="field" style="flex:1;margin-top:14px"><label for="vCode">${t("r.vcode")}</label><input id="vCode" type="number" placeholder="13"></div></div>
         <div class="field"><label for="vCert">${t("r.cert")} <span class="muted">${t("r.cert.first")}</span></label><input id="vCert" placeholder="base64url SHA-256"></div>
-        <button class="btn" id="upload" style="margin-top:16px">${ic("download")} ${t("r.upload")}</button></div>
-      <div class="card pad"><h3>${t("r.push")}</h3><p class="hint" style="margin-top:4px">${o.outdated ? t("r.push.n", { n: o.outdated }) : t("r.push.ok")}</p>
-        <div class="field"><label for="rollGroup">${t("r.push.which")}</label><select id="rollGroup"><option value="">${t("r.push.all")}</option>${gs.map((g) => `<option value="${g.id}">${esc(g.name)}</option>`).join("")}</select></div>
-        <button class="btn" id="rollAll" style="margin-top:16px" ${o.outdated ? "" : "disabled"}>${t("r.push.go")}</button>
-        ${rs.length ? `<p class="hint" style="margin-top:16px"><a href="${BASE}apk/latest.apk">${ic("download")} ${t("r.download")}</a></p>` : ""}</div></div>` : ""}
-    <h3 style="margin:28px 0 12px">${t("r.versions")}</h3>
-    <div class="card tablecard"><div class="tablewrap"><table><thead><tr><th>${t("th.version")}</th><th>${t("r.vcode")}</th><th>${t("th.size")}</th><th>${t("th.uploaded")}</th><th>${t("th.fingerprint")}</th></tr></thead><tbody>
-      ${rs.map((r, i) => `<tr><td><b>${esc(r.versionName)}</b> ${i === 0 ? `<span class="pill ok plain">${t("r.current")}</span>` : ""}</td><td>${r.versionCode}</td><td>${(r.size / 1048576).toFixed(1)} ${t("bytes.mb")}</td><td class="muted">${when(r.createdAt)}</td><td><code>${esc(r.sha256.slice(0, 12))}</code></td></tr>`).join("") || `<tr><td colspan="5"><div class="empty"><div class="ico">${ic("pkg")}</div><h3>${t("r.none.h")}</h3><p>${t("r.none.p")}</p></div></td></tr>`}
-    </tbody></table></div></div>
-
-    <div class="card section"><div class="hd"><div><h3>${t("m.h")}</h3><p>${t("m.p")}</p></div></div>
-      ${canWrite() ? `<div class="pad" style="border-bottom:1px solid var(--border)"><div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
-        <div class="field" style="margin:0"><label for="mFile">${t("r.file")}</label><input type="file" id="mFile" accept=".apk" class="w100"></div>
-        <div class="field" style="margin:0"><label for="mPkg">${t("m.pkg")}</label><input id="mPkg" placeholder="com.confiance.driver"></div>
-        <div class="field" style="margin:0"><label for="mLabel">${t("m.label")}</label><input id="mLabel" placeholder="Confiance Driver"></div>
-        <div class="field" style="margin:0"><label for="mVName">${t("r.vname")}</label><input id="mVName" placeholder="2.3.0"></div>
-        <div class="field" style="margin:0"><label for="mVCode">${t("r.vcode")}</label><input id="mVCode" type="number" placeholder="120"></div>
-        <div class="field" style="margin:0;align-self:end"><button class="btn w100" id="mUpload">${ic("download")} ${t("r.upload")}</button></div></div></div>` : ""}
-      <div class="tablewrap"><table><thead><tr><th>${t("m.label")}</th><th>${t("m.pkg")}</th><th>${t("th.version")}</th><th>${t("th.size")}</th><th>${t("th.uploaded")}</th><th></th></tr></thead><tbody>
-        ${[...latest.values()].map((m) => { const n = managed.filter((x) => x.pkg === m.pkg).length; return `<tr><td><b>${esc(m.label)}</b></td><td><code>${esc(m.pkg)}</code></td><td>${esc(m.versionName)} <span class="muted sm">(${m.versionCode})</span>${n > 1 ? ` <span class="pill plain">${t("m.history", { n })}</span>` : ""}</td><td>${(m.size / 1048576).toFixed(1)} ${t("bytes.mb")}</td><td class="muted">${when(m.createdAt)}</td><td style="text-align:right">${canWrite() ? `<button class="btn quiet sm icon" data-mdel="${m.id}" title="${esc(t("common.delete"))}" aria-label="${esc(t("common.delete"))}">${ic("trash")}</button>` : ""}</td></tr>`; }).join("") || `<tr><td colspan="6" class="muted pad">${t("m.none")}</td></tr>`}
-      </tbody></table></div></div>`;
+        <button class="btn" id="upload" style="margin-top:16px">${ic("download")} ${t("r.upload")}</button></div></details>` : ""}`;
   },
-  bind() {
-    const saveAllowed = async () => {
-      const list = $$("#aRows .aAllow:checked").map((i) => ({ pkg: i.value, label: i.dataset.label }));
-      await api("PUT", "/api/settings", { allowedApps: list }); toast(t("a.saved"));
-    };
-    $$("#aRows .aAllow").forEach((i) => i.addEventListener("change", (e) => saveAllowed().catch((err) => { e.target.checked = !e.target.checked; fail(err); })));
-    $("#aSearch")?.addEventListener("input", (e) => { const q = e.target.value.trim().toLowerCase(); $$("#aRows tr").forEach((r) => r.classList.toggle("hidden", !!q && !r.dataset.q.includes(q))); });
-    $("#aAdd")?.addEventListener("click", (e) => busy(e.currentTarget, async () => {
-      const p = $("#aPkg").value.trim(); if (!/^[A-Za-z0-9_.]+$/.test(p)) return toast(t("g.pkg.bad"), "err");
-      const list = $$("#aRows .aAllow:checked").map((i) => ({ pkg: i.value, label: i.dataset.label })).filter((a) => a.pkg !== p);
-      list.push({ pkg: p, label: $("#aLabel").value.trim() || p });
-      await api("PUT", "/api/settings", { allowedApps: list }); toast(t("a.saved")); refresh();
-    }));
+  bind([, , , managed, apps]) {
+    $("#apk")?.addEventListener("change", async (e) => { const info = e.target.files[0] && await readApk(e.target.files[0]); if (info) { $("#vName").value = info.versionName ?? ""; $("#vCode").value = info.versionCode ?? ""; } });
     $("#upload")?.addEventListener("click", (e) => busy(e.currentTarget, async () => {
       const f = $("#apk").files[0]; if (!f) return toast(t("r.choose"), "err");
       const q = new URLSearchParams({ versionName: $("#vName").value, versionCode: $("#vCode").value, certSha256: $("#vCert").value });
       await api("PUT", `/api/releases?${q}`, null, f); toast(t("r.uploaded")); refresh();
     }));
     $("#rollAll")?.addEventListener("click", (e) => busy(e.currentTarget, async () => {
-      const r = await api("POST", "/api/releases/rollout", { groupId: $("#rollGroup").value ? +$("#rollGroup").value : null });
+      const r = await api("POST", "/api/releases/rollout", { groupId: $("#rollGroup")?.value ? +$("#rollGroup").value : null });
       toast(t("r.push.sent", { n: r.queued }));
     }));
+    // Choosing a file fills the form from the APK itself, so nobody has to know a package name or a version code.
+    $("#mFile")?.addEventListener("change", async (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      $("#mForm").classList.remove("hidden");
+      $("#mPickT").textContent = f.name; $("#mPickS").textContent = `${(f.size / 1048576).toFixed(1)} ${t("bytes.mb")}`;
+      const big = f.size > MAX_APK;
+      $("#mErr").classList.toggle("hidden", !big); $("#mUpload").disabled = big;
+      if (big) { $("#mErrT").textContent = t("m.big.h", { mb: (f.size / 1048576).toFixed(0) }); $("#mErrP").textContent = t("m.big.p"); }
+      $("#mLarge").classList.toggle("hidden", big || f.size <= ONE_PIECE); $("#mLargeT").textContent = t("m.large", { mb: mb(f.size) }); $("#mLargeP").textContent = t("m.large.p", { mb: mb(f.size) });
+      const info = await readApk(f);
+      $("#mPkg").value = info?.pkg ?? ""; $("#mVName").value = info?.versionName ?? ""; $("#mVCode").value = info?.versionCode ?? "";
+      const known = info && (managed.find((m) => m.pkg === info.pkg)?.label || apps.find((a) => a.pkg === info.pkg && a.label !== a.pkg)?.label);
+      $("#mLabel").value = known || f.name.replace(/\.apk$/i, "").replace(/[-_]+/g, " ").replace(/\s*v?\d+(\.\d+)+.*$/, "").trim();
+      $("#mAuto").textContent = info ? t("m.auto.ok") : t("m.auto.no");
+    });
     $("#mUpload")?.addEventListener("click", (e) => busy(e.currentTarget, async () => {
       const f = $("#mFile").files[0]; if (!f) return toast(t("r.choose"), "err");
-      const q = new URLSearchParams({ pkg: $("#mPkg").value.trim(), label: $("#mLabel").value, versionName: $("#mVName").value, versionCode: $("#mVCode").value });
-      const r = await api("PUT", `/api/managed-apps?${q}`, null, f); toast(t("m.uploaded", { n: r.devices })); refresh();
+      const pkg = $("#mPkg").value.trim(), label = $("#mLabel").value.trim() || pkg, versionCode = +$("#mVCode").value;
+      if (!/^[A-Za-z0-9_.]+$/.test(pkg)) return toast(t("g.pkg.bad"), "err");
+      if (!(versionCode > 0)) return toast(t("m.need.code"), "err");
+      const bar = $("#mProg"), txt = $("#mProgT"); bar.classList.remove("hidden"); txt.classList.remove("hidden");
+      const show = (r, text) => { bar.firstElementChild.style.width = `${Math.round(r * 100)}%`; txt.textContent = text; };
+      try {
+        show(0, t("m.step.start"));
+        const sent = await sendApk(f, show);
+        show(1, t("m.step.check"));
+        await api("POST", "/api/managed-apps", { ...sent, pkg, label, versionName: $("#mVName").value.trim(), versionCode });
+        if ($("#mAllow").checked && !apps.some((a) => a.allowed && a.pkg === pkg))
+          await api("PUT", "/api/settings", { allowedApps: [...apps.filter((a) => a.allowed).map((a) => ({ pkg: a.pkg, label: a.label })), { pkg, label }] });
+        toast(t("m.done", { app: label })); refresh();
+      } catch (err) { bar.classList.add("hidden"); txt.classList.add("hidden"); throw err; }
     }));
     $$("[data-mdel]").forEach((b) => b.onclick = async () => { if (await ask({ title: t("m.del.ask"), body: t("m.del.p"), ok: t("common.delete"), danger: true })) { await api("DELETE", `/api/managed-apps/${b.dataset.mdel}`).catch(fail); refresh(); } });
   },
@@ -825,8 +1071,8 @@ pages.settings = {
           ${check("driverWifi", t("s.driverWifi"), t("s.driverWifi.h"), s.driverWifi, d)}
           ${check("reportLoc", t("s.loc"), t("s.loc.h"), s.reportLocation, d)}
           <div class="field"><label for="dispatch">${t("s.dispatch")}</label><input id="dispatch" value="${esc(s.dispatchPhone)}" placeholder="+237 6 00 00 00 00" ${d}><p class="hint">${t("s.dispatch.h")}</p></div>
-          <div class="row" style="margin-top:14px"><div class="field" style="margin:0;flex:1"><label for="hb">${t("s.hb")}</label><input id="hb" type="number" min="60" max="3600" value="${s.heartbeatSec}" ${d}><p class="hint">${t("s.hb.h")}</p></div>
-            <div class="field" style="margin:0;flex:1"><label for="hbPush">${t("s.hb.push")}</label><input id="hbPush" type="number" min="60" max="7200" value="${s.pushHeartbeatSec}" ${d}><p class="hint">${t("s.hb.push.h")}</p></div></div>
+          <details class="adv inline"><summary>${t("s.adv")}</summary><div class="row" style="margin-top:6px"><div class="field" style="margin:0;flex:1"><label for="hb">${t("s.hb")}</label><input id="hb" type="number" min="60" max="3600" value="${s.heartbeatSec}" ${d}><p class="hint">${t("s.hb.h")}</p></div>
+            <div class="field" style="margin:0;flex:1"><label for="hbPush">${t("s.hb.push")}</label><input id="hbPush" type="number" min="60" max="7200" value="${s.pushHeartbeatSec}" ${d}><p class="hint">${t("s.hb.push.h")}</p></div></div></details>
           <button class="btn" id="savePhones" style="margin-top:16px" ${d}>${t("common.save")}</button>
         </div></div>
         <div class="card"><div class="hd"><div><h3>${t("s.pin.h")}</h3><p>${t("s.pin.p")}</p></div></div><div class="pad">
@@ -917,24 +1163,36 @@ pages.account = {
 
 // ---------- Activity ----------
 const actionLabel = (a) => { const k = `act.${a}`; const s = t(k); if (s !== k) return s; return a.replace(/^setup:/, "setup · ").replace(/-/g, " "); };
-const au = { q: "", seg: "log" };
+const au = { q: "", seg: "log", shown: 60 };
+const AU_SEG = {
+  log: (a) => !isNoise(a),
+  signins: (a) => /^login|^logout|recovery-code/.test(a.action),
+  setup: (a) => /^setup:|apk-download/.test(a.action),
+};
+const dayTitle = (ts) => { const d = new Date(ts), n = new Date(), y = new Date(Date.now() - 86400000); const same = (a, b) => a.toDateString() === b.toDateString(); return same(d, n) ? t("au.today") : same(d, y) ? t("au.yesterday") : d.toLocaleDateString(LOCALE(), { weekday: "long", day: "numeric", month: "long" }); };
 pages.audit = {
   title: "au.title", sub: "au.sub", live: true,
   skeleton: () => skTable(8),
-  load: () => Promise.all([get(`/api/audit?limit=300${au.q ? `&q=${encodeURIComponent(au.q)}` : ""}`), get("/api/alerts?all=1")]),
+  load: () => Promise.all([get(`/api/audit?limit=600${au.q ? `&q=${encodeURIComponent(au.q)}` : ""}`), get("/api/alerts?all=1")]),
   render([rows, alerts]) {
-    const seg = `<div class="toolbar"><div class="seg"><button data-aseg="log" class="${au.seg === "log" ? "on" : ""}">${t("au.seg.log")}</button><button data-aseg="alerts" class="${au.seg === "alerts" ? "on" : ""}">${t("au.seg.alerts")}<small>${alerts.filter((a) => a.active).length}</small></button></div>
-      ${au.seg === "log" ? `<div class="search">${ic("search")}<input id="aq" placeholder="${esc(t("au.search"))}" value="${esc(au.q)}" autocomplete="off"></div>` : ""}</div>`;
+    const tabBtn = (k, n) => `<button data-aseg="${k}" class="${au.seg === k ? "on" : ""}">${t(`au.seg.${k}`)}${n != null ? `<small>${n}</small>` : ""}</button>`;
+    const seg = `<div class="toolbar"><div class="seg">${tabBtn("log")}${tabBtn("alerts", alerts.filter((a) => a.active).length)}${tabBtn("signins")}${tabBtn("setup")}</div>
+      ${au.seg !== "alerts" ? `<div class="search">${ic("search")}<input id="aq" placeholder="${esc(t("au.search"))}" value="${esc(au.q)}" autocomplete="off"></div>` : ""}</div>`;
     if (au.seg === "alerts") return seg + `<div class="card tablecard"><div class="tablewrap"><table><thead><tr><th>${t("th.when")}</th><th>${t("th.phone")}</th><th>${t("th.kind")}</th><th>${t("th.message")}</th><th>${t("th.status")}</th><th></th></tr></thead><tbody>
       ${alerts.map((a) => `<tr><td class="muted nowrap">${when(a.ts)}</td><td><b>${esc(alertWho(a) || t("alert.fleet"))}</b></td><td><span class="pill plain ${ALERT_TONE[a.kind] ?? ""}">${esc(alertKind(a.kind))}</span></td><td class="muted">${esc(alertMsg(a))}</td><td>${a.active ? `<span class="pill warn">${t("au.active")}</span>` : `<span class="pill plain">${t("au.cleared")}</span>`}</td><td style="text-align:right">${a.active && canWrite() ? `<button class="btn quiet sm" data-dismiss="${a.id}">${t("common.dismiss")}</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="6"><div class="empty"><div class="ico">${ic("bell")}</div><h3>${t("au.alerts.none")}</h3></div></td></tr>`}
     </tbody></table></div></div>`;
-    return seg + `<div class="card tablecard"><div class="tablewrap"><table><thead><tr><th>${t("th.when")}</th><th>${t("th.who")}</th><th>${t("th.what")}</th><th>${t("th.details")}</th></tr></thead><tbody>
-      ${rows.map((a) => `<tr><td class="muted nowrap">${when(a.ts)}</td><td><b>${esc(a.actor)}</b></td><td><span class="pill plain ${/failed|delete|remove|wipe|lost/.test(a.action) ? "bad" : /login$|approve|enable|found/.test(a.action) ? "ok" : ""}">${esc(actionLabel(a.action))}</span></td><td class="muted">${esc(a.detail)}</td></tr>`).join("") || `<tr><td colspan="4"><div class="empty"><div class="ico">${ic("activity")}</div><h3>${t("au.none")}</h3></div></td></tr>`}
-    </tbody></table></div></div>`;
+    const list = rows.filter(AU_SEG[au.seg] ?? AU_SEG.log), page = list.slice(0, au.shown);
+    let day = "";
+    const body = page.map((a) => { const d = new Date(a.ts).toDateString(); const head = d !== day ? `<tr class="dayrow"><td colspan="4">${esc(dayTitle(a.ts))}</td></tr>` : ""; day = d;
+      return `${head}<tr><td class="muted nowrap" title="${esc(when(a.ts))}">${hhmm(a.ts)}</td><td><b>${esc(a.actor.split("@")[0])}</b></td><td><span class="pill plain ${/failed|delete|remove|wipe|lost/.test(a.action) ? "bad" : /login$|approve|enable|found/.test(a.action) ? "ok" : ""}">${esc(actionLabel(a.action))}</span></td><td class="muted">${esc(a.detail)}</td></tr>`; }).join("");
+    return seg + `<div class="card tablecard"><div class="tablewrap"><table class="logtable"><thead><tr><th style="width:70px">${t("th.when")}</th><th>${t("th.who")}</th><th>${t("th.what")}</th><th>${t("th.details")}</th></tr></thead><tbody>
+      ${body || `<tr><td colspan="4"><div class="empty"><div class="ico">${ic("activity")}</div><h3>${t("au.none")}</h3></div></td></tr>`}
+    </tbody></table></div>${list.length > page.length ? `<div class="pad morebar"><button class="btn ghost sm" id="auMore">${t("au.more", { n: list.length - page.length })}</button></div>` : ""}</div>`;
   },
   bind() {
-    $$("[data-aseg]").forEach((b) => b.onclick = () => { au.seg = b.dataset.aseg; paint("audit", pageData.audit); });
+    $$("[data-aseg]").forEach((b) => b.onclick = () => { au.seg = b.dataset.aseg; au.shown = 60; paint("audit", pageData.audit); });
     let tmr; $("#aq")?.addEventListener("input", (e) => { au.q = e.target.value; clearTimeout(tmr); tmr = setTimeout(() => go("audit", { quiet: true }), 350); });
+    $("#auMore")?.addEventListener("click", () => { au.shown += 100; paint("audit", pageData.audit); });
     $$("[data-dismiss]").forEach((b) => b.onclick = () => busy(b, async () => { await api("POST", `/api/alerts/${b.dataset.dismiss}/dismiss`); refresh(); }));
   },
 };
@@ -945,6 +1203,7 @@ pages.audit = {
 document.addEventListener("click", (e) => {
   const goBtn = e.target.closest("[data-go]"); if (!goBtn) return;
   const f = goBtn.dataset.filter; if (f) { dev.status = f; dev.group = ""; dev.q = ""; }
+  if (goBtn.dataset.stab) settingsTab = goBtn.dataset.stab;
   const target = goBtn.dataset.go;
   if (location.hash === "#/" + target) go(target); else location.hash = "#/" + target;
 });
@@ -978,6 +1237,7 @@ $("#menu").onclick = () => { $("#side").classList.toggle("open"); $("#scrim").cl
 $("#scrim").onclick = () => { $("#side").classList.remove("open"); $("#scrim").classList.remove("open"); };
 $("#nav").addEventListener("click", (e) => { const b = e.target.closest("[data-tab]"); if (b) location.hash = "#/" + b.dataset.tab; });
 $("#nav").addEventListener("pointerover", (e) => { const b = e.target.closest("[data-tab]"); if (b) prefetch(b.dataset.tab); });
+$("#userChip").onclick = () => { location.hash = "#/account"; $("#side").classList.remove("open"); $("#scrim").classList.remove("open"); };
 $("#langBtn").onclick = $("#langBtn2").onclick = () => setLang(LANG === "fr" ? "en" : "fr");
 
 // ---------- sign in / out ----------
