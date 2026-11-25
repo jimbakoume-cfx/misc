@@ -170,7 +170,30 @@ function prefetch(tn) {
 }
 const ALIAS = { groups: "apps" }; // old address of the groups page
 const routeFromHash = () => { let r = location.hash.replace(/^#\/?/, ""); r = ALIAS[r] ?? r; return pages[r] ? r : "overview"; };
-window.addEventListener("hashchange", () => go(routeFromHash()));
+// A dashboard left open keeps running the code it loaded, so a tab opened before an update misses it (and shows
+// limits or labels that no longer apply). The published app.js is compared with the one this tab runs: once it has
+// changed, the next page change reloads, and a person who stays on the page is offered a button.
+let builtWith = null, stale = false, versionAt = 0;
+async function checkVersion() {
+  if (stale || Date.now() - versionAt < 60_000) return;
+  versionAt = Date.now();
+  try {
+    const r = await fetch(new URL("app.js", document.baseURI), { method: "HEAD", cache: "no-store" });
+    const v = r.ok ? r.headers.get("etag") || r.headers.get("last-modified") : null;
+    if (!v) return;
+    if (!builtWith) builtWith = v;
+    else if (v !== builtWith) {
+      stale = true;
+      const el = document.createElement("div"); el.className = "toast";
+      el.innerHTML = `${ic("refresh")}<span>${esc(t("app.stale"))}</span><button class="btn sm ghost">${esc(t("app.reload"))}</button>`;
+      el.querySelector("button").onclick = () => location.reload();
+      $("#toasts").appendChild(el);
+    }
+  } catch { /* offline: try again later */ }
+}
+checkVersion(); setInterval(checkVersion, 5 * 60_000);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkVersion(); });
+window.addEventListener("hashchange", () => { if (stale) return location.reload(); checkVersion(); go(routeFromHash()); });
 function setHead(p, data) {
   $("#pageTitle").textContent = t(p.title);
   $("#pageSub").textContent = typeof p.sub === "function" ? p.sub(data) : p.sub ? t(p.sub) : "";
