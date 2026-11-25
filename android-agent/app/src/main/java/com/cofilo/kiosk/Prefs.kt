@@ -208,6 +208,11 @@ class Prefs(context: Context) {
         get() = str("installError")
         set(v) = put("installError", v)
 
+    /** Values of the app-scan settings before an install paused them ("" = not paused), and when (elapsed ms). */
+    var verifierSaved: String
+        get() = str("verifierSaved")
+        set(v) = put("verifierSaved", v)
+
     /** Package -> {sha, n}: how many times in a row the phone refused that exact file (retries are spaced out). */
     var installFails: JSONObject
         get() = runCatching { JSONObject(str("installFails", "{}")) }.getOrDefault(JSONObject())

@@ -143,6 +143,7 @@ class AgentService : Service() {
             val prefs = Prefs(this)
             wakeSignal.drainPermits()
             tickError = ""
+            runCatching { Policy.resumeStaleAppScan(this) }
             runCatching { tick() }
                 .onSuccess { prefs.lastError = tickError.ifEmpty { prefs.installError } }
                 .onFailure {
@@ -193,7 +194,11 @@ class AgentService : Service() {
     private fun maybeSelfUpdate(prefs: Prefs) {
         val info = prefs.updateInfo.takeIf { it.isNotEmpty() }?.let { runCatching { JSONObject(it) }.getOrNull() } ?: return
         val mine = packageManager.getPackageInfo(packageName, 0).longVersionCode
-        if (info.optLong("versionCode", 0L) <= mine) return
+        if (info.optLong("versionCode", 0L) <= mine) {
+            // Up to date: a refusal reported by an earlier attempt of this same update no longer means anything.
+            if (prefs.installError.startsWith("install $packageName")) prefs.installError = ""
+            return
+        }
         if (SystemClock.elapsedRealtime() - prefs.lastUpdateAttempt < UPDATE_RETRY_MS && prefs.lastUpdateAttempt > 0) return
         prefs.lastUpdateAttempt = SystemClock.elapsedRealtime()
         Log.i(TAG, "updating to ${info.optString("versionName")} (${info.optLong("versionCode")})")

@@ -280,6 +280,50 @@ object Policy {
         return changed
     }
 
+    // ---- the phone's scan of new apps (Google Play Protect) ----
+    // An app Google has never seen is refused ("Install not allowed") when it is installed without anybody tapping
+    // through the scan dialog, which a locked kiosk cannot show. The apps pushed from the dashboard are chosen by the
+    // fleet's administrator, so the scan is paused for the few seconds an install takes and put back right after.
+    private val VERIFIER_KEYS = listOf("package_verifier_user_consent" to "-1", "package_verifier_enable" to "0", "verifier_verify_adb_installs" to "0")
+
+    /** Pauses the scan. Returns false when this phone does not let the app change the setting (not set up by USB). */
+    fun pauseAppScan(ctx: Context): Boolean {
+        if (!canWriteSecureSettings(ctx)) return false
+        val prefs = Prefs(ctx)
+        val cr = ctx.contentResolver
+        if (prefs.verifierSaved.isEmpty())
+            prefs.verifierSaved = VERIFIER_KEYS.joinToString(";") { (k, _) -> "$k=" + (Settings.Global.getString(cr, k) ?: "") } + ";at=" + System.currentTimeMillis()
+        var ok = true
+        for ((k, v) in VERIFIER_KEYS) ok = runCatching { Settings.Global.putString(cr, k, v) }.getOrDefault(false) && ok
+        return ok
+    }
+
+    /** Puts the scan settings back as they were before [pauseAppScan]. */
+    fun resumeAppScan(ctx: Context) {
+        val prefs = Prefs(ctx)
+        val saved = prefs.verifierSaved.takeIf { it.isNotEmpty() } ?: return
+        if (canWriteSecureSettings(ctx)) for (pair in saved.split(";")) {
+            val k = pair.substringBefore("="); val v = pair.substringAfter("=")
+            if (k == "at") continue
+            runCatching { Settings.Global.putString(ctx.contentResolver, k, v.ifEmpty { null }) }
+        }
+        prefs.verifierSaved = ""
+    }
+
+    /** A pause whose install never reported back (the phone restarted meanwhile) ends after ten minutes. */
+    fun resumeStaleAppScan(ctx: Context) {
+        val at = Prefs(ctx).verifierSaved.substringAfter(";at=", "").toLongOrNull() ?: return
+        if (System.currentTimeMillis() - at > 10 * 60_000L) resumeAppScan(ctx)
+    }
+
+    /** For the dashboard, e.g. "consent=1 enable=1 writable". */
+    fun appScanStatus(ctx: Context): String {
+        val cr = ctx.contentResolver
+        return "consent=" + (Settings.Global.getString(cr, "package_verifier_user_consent") ?: "unset") +
+            " enable=" + (Settings.Global.getString(cr, "package_verifier_enable") ?: "unset") +
+            (if (canWriteSecureSettings(ctx)) " writable" else " read-only") + (if (Prefs(ctx).verifierSaved.isNotEmpty()) " paused" else "")
+    }
+
     /**
      * For the dashboard: "off" (every switch off), "on" (a switch is on and the app may not write it), "not found"
      * (no Samsung switch on this phone), followed by the switches seen, e.g. "off (rampart_main_switch_enabled=0)".
