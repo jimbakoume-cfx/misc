@@ -317,6 +317,7 @@ details.adv.inline { margin-top: 16px; border-top: 1px solid var(--border); } de
 .filepick span { flex: 1; min-width: 0; } .filepick b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .filepick small { color: var(--text-3); }
 .filepick input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .uploader { border-bottom: 1px solid var(--border); position: relative; }
+.uploader .grid > .field, .uploader .grid > .field:first-child { margin-top: 14px; }
 .progress { height: 8px; border-radius: 999px; background: var(--surface-3); overflow: hidden; margin-top: 14px; } .progress i { display: block; height: 100%; width: 0; background: var(--brand); border-radius: 999px; transition: width .2s; }
 
 /* activity grouped by day */

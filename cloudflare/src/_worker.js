@@ -19,6 +19,39 @@ const SECURITY_HEADERS = {
     `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://tile.openstreetmap.org; connect-src 'self' ${SUPABASE_URL}; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'`,
 };
 
+const STORE = `${SUPABASE_URL}/storage/v1/object/public/apk`;
+
+/**
+ * Apps too big for one stored file are kept in pieces (<sha256>.apk.p00, .p01, ...) described by <sha256>.apk.json.
+ * This sends them to the phone as one file, piece after piece, without holding anything in memory.
+ * Returns null when the file is not stored that way.
+ */
+async function bigFile(sha, req, ctx) {
+  const man = await fetch(`${STORE}/${sha}.apk.json`);
+  if (!man.ok) { await man.body?.cancel(); return null; }
+  const { size, parts } = await man.json();
+  if (!(size > 0) || !Array.isArray(parts) || !parts.length) return null;
+  const headers = {
+    "content-type": "application/vnd.android.package-archive",
+    "content-length": String(size),
+    "content-disposition": `attachment; filename="${sha.slice(0, 12)}.apk"`,
+    "cache-control": "public, max-age=31536000, immutable",
+  };
+  if (req.method === "HEAD") return new Response(null, { headers });
+  const { readable, writable } = new FixedLengthStream(size);
+  ctx.waitUntil((async () => {
+    try {
+      for (let i = 0; i < parts.length; i++) {
+        const r = await fetch(`${STORE}/${sha}.apk.p${String(i).padStart(2, "0")}`);
+        if (!r.ok || !r.body) throw new Error(`piece ${i}: ${r.status}`);
+        await r.body.pipeTo(writable, { preventClose: true });
+      }
+      await writable.close();
+    } catch (e) { await writable.abort(e).catch(() => {}); }
+  })());
+  return new Response(readable, { headers });
+}
+
 const isApi = (p) => p === "/healthz" || p.startsWith("/api/") || p.startsWith("/apk/");
 
 /** Forwards one request to the Supabase function and streams the answer back unchanged. */
@@ -37,10 +70,15 @@ async function proxy(req, url) {
 }
 
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     const url = new URL(req.url);
     const path = url.pathname;
 
+    const big = (req.method === "GET" || req.method === "HEAD") && /^\/apk\/([0-9a-f]{64})\.apk$/.exec(path);
+    if (big) {
+      try { const res = await bigFile(big[1], req, ctx); if (res) return res; }
+      catch { return Response.json({ error: "The file could not be read. Try again in a moment." }, { status: 502 }); }
+    }
     if (isApi(path)) {
       try { return await proxy(req, url); }
       catch { return Response.json({ error: "The server could not be reached. Try again in a moment." }, { status: 502 }); }

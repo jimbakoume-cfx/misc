@@ -22,8 +22,8 @@ export interface BlobStore {
   move?(from: string, to: string): Promise<void>;
   /** Deletes stored files; missing ones are ignored. */
   remove?(keys: string[]): Promise<void>;
-  /** Files directly under a folder ("" = top level), with their age. */
-  list?(prefix: string): Promise<{ name: string; createdAt: number }[]>;
+  /** Files directly under a folder ("" = top level), with their age and size. */
+  list?(prefix: string): Promise<{ name: string; createdAt: number; size?: number }[]>;
   /** Stores one dashboard file (index.html, app.js, …) where `Assets` will read it from; absent when the files ship with the code. */
   setStatic?(path: string, data: ArrayBuffer, contentType: string): Promise<void>;
 }

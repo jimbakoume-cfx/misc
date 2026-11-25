@@ -847,7 +847,37 @@ pages.provision = {
 };
 
 // ---------- reading and sending an APK ----------
-const MAX_APK = 50 * 1048576; // storage refuses bigger files on the current plan
+const ONE_PIECE = 45 * 1048576; // the storage refuses files over 50 MB: bigger ones are sent in pieces of PIECE bytes
+const PIECE = 40 * 1048576, MAX_APK = 600 * 1048576;
+const mb = (n) => (n / 1048576).toFixed(n >= 100 * 1048576 ? 0 : 1);
+/** SHA-256 of a file, as hex (phones verify it before installing). */
+async function fileSha256(file) {
+  const d = new Uint8Array(await crypto.subtle.digest("SHA-256", await file.arrayBuffer()));
+  return Array.from(d, (x) => x.toString(16).padStart(2, "0")).join("");
+}
+/** Sends a file (in pieces when it is big) and returns what POST /api/managed-apps needs to find it again. */
+async function sendApk(file, show) {
+  const step = (sent) => show(sent / file.size, t("m.step.send", { pct: Math.floor(sent / file.size * 100), sent: mb(sent), total: mb(file.size) }));
+  if (file.size <= ONE_PIECE) {
+    const up = await api("POST", "/api/uploads", {});
+    await putFile(up.url, file, (r, sent) => step(sent));
+    return { key: up.key };
+  }
+  show(0, t("m.step.hash"));
+  const sha256 = await fileSha256(file), keys = [];
+  for (let off = 0; off < file.size; off += PIECE) {
+    const piece = file.slice(off, Math.min(off + PIECE, file.size));
+    // An upload address is asked for each piece, just before it is used, and a piece that fails is sent again.
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const up = await api("POST", "/api/uploads", {});
+        await putFile(up.url, piece, (r, sent) => step(off + sent));
+        keys.push(up.key); break;
+      } catch (e) { if (attempt >= 4) throw e; show(off / file.size, t("m.step.retry")); await new Promise((r) => setTimeout(r, 2500 * attempt)); }
+    }
+  }
+  return { keys, sha256, size: file.size };
+}
 /** Package name and version of an APK, read from its manifest in the browser (nothing is uploaded). Null when unreadable. */
 async function readApk(file) {
   try {
@@ -946,6 +976,7 @@ pages.releases = {
             <div class="field"><label for="mVCode">${t("r.vcode")}</label><input id="mVCode" type="number" placeholder="120"></div>
           </div>
           <p class="hint" id="mAuto"></p>
+          <div class="banner warn hidden" id="mLarge" style="margin-top:12px">${ic("info")}<div class="t"><b id="mLargeT"></b><span id="mLargeP"></span></div></div>
           ${check("mAllow", t("m.allow"), t("m.allow.h"), true)}
           <div class="progress hidden" id="mProg"><i></i></div><p class="hint hidden" id="mProgT"></p>
           <button class="btn" id="mUpload" style="margin-top:14px">${ic("download")} ${t("m.go")}</button>
@@ -984,6 +1015,7 @@ pages.releases = {
       const big = f.size > MAX_APK;
       $("#mErr").classList.toggle("hidden", !big); $("#mUpload").disabled = big;
       if (big) { $("#mErrT").textContent = t("m.big.h", { mb: (f.size / 1048576).toFixed(0) }); $("#mErrP").textContent = t("m.big.p"); }
+      $("#mLarge").classList.toggle("hidden", big || f.size <= ONE_PIECE); $("#mLargeT").textContent = t("m.large", { mb: mb(f.size) }); $("#mLargeP").textContent = t("m.large.p", { mb: mb(f.size) });
       const info = await readApk(f);
       $("#mPkg").value = info?.pkg ?? ""; $("#mVName").value = info?.versionName ?? ""; $("#mVCode").value = info?.versionCode ?? "";
       const known = info && (managed.find((m) => m.pkg === info.pkg)?.label || apps.find((a) => a.pkg === info.pkg && a.label !== a.pkg)?.label);
@@ -999,10 +1031,9 @@ pages.releases = {
       const show = (r, text) => { bar.firstElementChild.style.width = `${Math.round(r * 100)}%`; txt.textContent = text; };
       try {
         show(0, t("m.step.start"));
-        const up = await api("POST", "/api/uploads", {});
-        await putFile(up.url, f, (r, sent) => show(r, t("m.step.send", { pct: Math.round(r * 100), sent: (sent / 1048576).toFixed(1), total: (f.size / 1048576).toFixed(1) })));
+        const sent = await sendApk(f, show);
         show(1, t("m.step.check"));
-        await api("POST", "/api/managed-apps", { key: up.key, pkg, label, versionName: $("#mVName").value.trim(), versionCode });
+        await api("POST", "/api/managed-apps", { ...sent, pkg, label, versionName: $("#mVName").value.trim(), versionCode });
         if ($("#mAllow").checked && !apps.some((a) => a.allowed && a.pkg === pkg))
           await api("PUT", "/api/settings", { allowedApps: [...apps.filter((a) => a.allowed).map((a) => ({ pkg: a.pkg, label: a.label })), { pkg, label }] });
         toast(t("m.done", { app: label })); refresh();
