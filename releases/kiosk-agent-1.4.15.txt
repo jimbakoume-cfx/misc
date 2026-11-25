@@ -6,4 +6,4 @@ Cert SHA-256 (QR):  EJvptcdLfPrGnpfbPlDgiVHwepjDE7u7GguXY5LQAbA
 Signed with:        kiosk-release-2026-11.keystore (alias kiosk), created 2026-11-24
 SHA-256 (APK):      16df9283a1a2ad04be6d06030e960b7c652890771562b4f1b2f2b0935b0b35c5
 Changes:            installs of apps pushed from the dashboard no longer fail with "INSTALL_FAILED_VERIFICATION_FAILURE: Install not allowed": the phone's scan of new apps (Play Protect) is paused for the duration of the install and restored right after (needs the USB setup, which grants WRITE_SECURE_SETTINGS); the scan settings are reported as status.appScan; a stale refusal message about the kiosk's own update is cleared
-Rollout:            2026-11-25: Driver-002 only, at the fleet owner's request (automatic updates switched off meanwhile). Confiance Allier 1.0.1 installed there on the first attempt; scan setting back to consent=1 afterwards.
+Rollout:            2026-11-25: Driver-002 first, then Driver-001 and Driver-003, each step at the fleet owner's request. Confiance Allier 1.0.1 (293 MB) installed on all three at the first attempt; the scan setting read consent=1 again on each phone afterwards.
