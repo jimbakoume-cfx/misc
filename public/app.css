@@ -183,6 +183,7 @@ pre.box { white-space: pre-wrap; font: 12.5px ui-monospace, Menlo, Consolas, mon
 
 /* toasts */
 #toasts { position: fixed; right: 20px; bottom: 20px; z-index: 200; display: grid; gap: 10px; width: min(380px, calc(100vw - 24px)); pointer-events: none; }
+.toast .btn { align-self: center; margin-left: 4px; background: #fff; color: #0b1230; border-color: #fff; }
 .toast { display: flex; gap: 10px; align-items: flex-start; background: #0b1230; color: #fff; padding: 12px 14px; border-radius: 12px; box-shadow: var(--shadow-lg); animation: pop .2s ease; pointer-events: auto; } .toast svg { margin-top: 1px; color: #47cd89; } .toast.err svg { color: #f97066; } .toast.out { opacity: 0; transform: translateY(6px); transition: .25s; }
 
 @media print { #side, .topbar, #bulk, #toasts, #loadbar { display: none !important; } #main { margin: 0; } }
