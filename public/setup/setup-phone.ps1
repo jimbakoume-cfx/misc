@@ -67,10 +67,16 @@ foreach ($s in $ready) {
   if ($out -notmatch "Success") { Say "Install failed: $out" Red; Say "If the phone showed a Play Protect or 'install via USB' question, accept it and run again." Yellow; continue }
   $out = Run $s @("shell", "dpm", "set-device-owner", "$Package/.AdminReceiver")
   if ($out -notmatch "Success") {
-    Say "Could not make the app the device manager: $out" Red
-    if ($out -match "already.*owner|device owner.*already") { Say "This phone is already managed: the app was updated to the latest version, nothing else to do." Green; continue }
-    if ($out -match "account") { Say "The phone has an account on it. Remove it (Settings > Accounts) or factory-reset and skip every account step in the setup." Yellow }
-    elseif ($out -match "already|provision|user") { Say "The phone is already set up in a way that blocks this. Factory-reset it, skip every account step, then run this again." Yellow }
+    # "already" also appears in "there are already some accounts on the device": the account case is checked first.
+    if ($out -match "accounts? on the device") {
+      Say "This phone is NOT set up yet: it has an account on it (Google or Samsung), and Android refuses to hand a phone with an account to a manager app." Red
+      Say "What to do: on the phone, open Settings > Accounts and backup > Manage accounts, tap each account and choose 'Remove account'." Yellow
+      Say "When the list is empty, run this again. (Or factory-reset the phone and skip every Google and Samsung account step.)" Yellow
+      continue
+    }
+    if ($out -match "device owner is already set|already has a device owner") { Say "This phone is already managed: the app was updated to the latest version, nothing else to do." Green; continue }
+    Say "This phone is NOT set up yet. Android refused to put Confiance Kiosk in charge: $out" Red
+    Say "What to do: factory-reset the phone, skip every Google and Samsung account step, switch USB debugging on, then run this again." Yellow
     continue
   }
   # Samsung Auto Blocker refuses every app that is not from a store (our updates included): switch it off now and let
@@ -92,5 +98,5 @@ foreach ($s in $ready) {
   $out = Run $s @("shell", "am", "broadcast", "-n", "$Package/.UsbSetupReceiver", "--es", "server_url", $Server, "--es", "enroll_token", $Code)
   if ($out -notmatch "data=`"ok`"") { Say "The phone did not accept the setup code: $out" Red; continue }
   Run $s @("shell", "am", "start", "-n", "$Package/.MainActivity") | Out-Null
-  Say "Done. The phone is managed and enrolling. Approve it in the dashboard (Devices)." Green
+  Say "Done. The phone is managed and enrolling. Approve it on the dashboard under Phones." Green
 }

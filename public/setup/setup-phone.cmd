@@ -14,5 +14,5 @@ set /p CODE=Setup code from the dashboard (for example XZUF7-EKXKV):
 if "%CODE%"=="" ( echo No code entered. & pause & exit /b 1 )
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup-phone.ps1" -Code "%CODE%"
 echo.
-echo  Finished. If the phone shows Confiance Kiosk, approve it on the dashboard under Phones.
+echo  Finished. Read the messages above. A phone that was set up now appears on the dashboard under Phones.
 pause
