@@ -30,6 +30,9 @@ DEVICES=$("$ADB" devices | tail -n +2 | awk '$2=="device"{print $1}')
 "$ADB" devices | tail -n +2 | awk '$2=="unauthorized"{print "Phone " $1 " is waiting for you to tap Allow USB debugging on its screen, then run this again."}'
 [ -n "$DEVICES" ] || { echo "No phone found. Plug it in with a data cable, switch on USB debugging, and tap Allow on the phone."; exit 1; }
 
+DONE=0; FAILED=0
+# Android's own sentence about why it refused, without the technical trace that follows it.
+reason() { echo "$1" | grep -E "Exception:|Error:" | head -n 1 | sed -E 's/^.*(Exception|Error):[[:space:]]*//' | tr -d '\r'; }
 for S in $DEVICES; do
   MODEL=$("$ADB" -s "$S" shell getprop ro.product.model | tr -d '\r')
   echo; echo "=== $MODEL ($S)"
@@ -41,17 +44,30 @@ for S in $DEVICES; do
     if ! echo "$UN" | grep -q Success; then
       echo "The old app is still managing this phone, so it cannot be removed: $UN"
       echo "Either press 'Release & remove' for this phone on the dashboard, wait until the phone unlocks, switch USB debugging on again and run this again; or factory-reset the phone, skip every account step, and run this again."
-      continue
+      FAILED=$((FAILED+1)); continue
     fi
     OUT=$("$ADB" -s "$S" install -r "$APK" 2>&1)
   fi
-  echo "$OUT" | grep -q Success || { echo "Install failed: $OUT"; echo "If the phone asked about Play Protect or install via USB, accept it and run again."; continue; }
+  echo "$OUT" | grep -q Success || { FAILED=$((FAILED+1)); echo "Install failed: $OUT"; echo "If the phone asked about Play Protect or install via USB, accept it and run again."; continue; }
   OUT=$("$ADB" -s "$S" shell dpm set-device-owner "$PKG/.AdminReceiver" 2>&1)
   if ! echo "$OUT" | grep -q Success; then
-    if echo "$OUT" | grep -qiE "already.*owner|device owner.*already"; then echo "This phone is already managed: the app was updated to the latest version, nothing else to do."; continue; fi
-    echo "Could not make the app the device manager: $OUT"
-    echo "$OUT" | grep -qi account && echo "The phone has an account on it. Remove it (Settings > Accounts) or factory-reset and skip every account step."
-    echo "$OUT" | grep -qiE "already|provision|user" && echo "The phone is already set up in a way that blocks this. Factory-reset it, skip every account step, then run again."
+    # Is Confiance Kiosk already in charge of this phone? Then only the app needed updating.
+    if "$ADB" -s "$S" shell dpm list-owners 2>&1 | grep -qF "$PKG"; then echo "This phone is already managed by Confiance Kiosk: the app was updated to the latest version, nothing else to do."; DONE=$((DONE+1)); continue; fi
+    FAILED=$((FAILED+1))
+    echo "This phone is NOT set up yet. Android refused to put Confiance Kiosk in charge:"
+    echo "  $(reason "$OUT")"
+    if echo "$OUT" | grep -qiE "accounts? on the device"; then
+      ACC=$("$ADB" -s "$S" shell dumpsys account 2>/dev/null | tr -d '\r' | grep "Account {name=" | sed -E 's/.*type=([^} ]+).*/\1/; s/^com\.google$/Google/; s/^com\.osp\.app\.signin$/Samsung-account/' | sort -u | tr '\n' ' ')
+      [ -n "$ACC" ] && echo "  Accounts found on the phone: $ACC"
+      echo "What to do: on the phone, open Settings > Accounts and backup > Manage accounts, tap each account and choose 'Remove account'."
+      echo "When the list is empty, run this again. (Or factory-reset the phone and skip every Google and Samsung account step.)"
+    elif echo "$OUT" | grep -qiE "users? on the device"; then
+      echo "What to do: the phone has a second user or profile (Secure Folder, work profile, guest). Remove it in Settings, or factory-reset the phone, then run this again."
+    elif echo "$OUT" | grep -qiE "already (set|has)|already provisioned|is already"; then
+      echo "What to do: the phone is already managed by something else or was fully set up. Factory-reset it, skip every account step, then run this again."
+    else
+      echo "What to do: factory-reset the phone, skip every Google and Samsung account step, switch USB debugging on, then run this again."
+    fi
     continue
   fi
   # Samsung Auto Blocker refuses every app that is not from a store (our updates included): switch it off now and let
@@ -71,7 +87,14 @@ for S in $DEVICES; do
   "$ADB" -s "$S" shell settings put system accelerometer_rotation 0 >/dev/null 2>&1
   "$ADB" -s "$S" shell settings put system user_rotation 0 >/dev/null 2>&1
   OUT=$("$ADB" -s "$S" shell am broadcast -n "$PKG/.UsbSetupReceiver" --es server_url "$SERVER" --es enroll_token "$CODE" 2>&1)
-  echo "$OUT" | grep -q 'data="ok"' || { echo "The phone did not accept the setup code: $OUT"; continue; }
+  echo "$OUT" | grep -q 'data="ok"' || { FAILED=$((FAILED+1)); echo "The phone did not accept the setup code: $OUT"; continue; }
   "$ADB" -s "$S" shell am start -n "$PKG/.MainActivity" >/dev/null 2>&1
-  echo "Done. The phone is managed and enrolling. Approve it in the dashboard (Devices)."
+  DONE=$((DONE+1))
+  echo "Done. The phone is managed and enrolling. Approve it on the dashboard under Phones."
 done
+
+echo
+if [ "$FAILED" -eq 0 ]; then echo "Finished: $DONE phone(s) set up. Approve them on the dashboard under Phones."
+elif [ "$DONE" -eq 0 ]; then echo "Finished, but NO phone was set up. Follow 'What to do' above, then run this again."
+else echo "Finished: $DONE phone(s) set up, $FAILED not set up. Follow 'What to do' above for those, then run this again."; fi
+[ "$FAILED" -eq 0 ] || exit 2
